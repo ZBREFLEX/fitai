@@ -103,7 +103,7 @@ export default function SignUp() {
           </form>
 
           {/* Divider */}
-          <div className="relative my-6">
+          {/* <div className="relative my-6">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-secondary"></div>
             </div>
@@ -112,17 +112,17 @@ export default function SignUp() {
                 Or continue with
               </span>
             </div>
-          </div>
+          </div> */}
 
           {/* Social Buttons */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* <div className="grid grid-cols-2 gap-3">
             <button className="px-4 py-2 bg-secondary text-neutral rounded-lg border border-accent border-opacity-20 hover:border-opacity-40 transition-all">
               Google
             </button>
             <button className="px-4 py-2 bg-secondary text-neutral rounded-lg border border-accent border-opacity-20 hover:border-opacity-40 transition-all">
               GitHub
             </button>
-          </div>
+          </div> */}
 
           {/* Sign In Link */}
           <p className="text-center text-neutral text-opacity-70 mt-6">
