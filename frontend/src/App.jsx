@@ -6,8 +6,10 @@ import About from "./pages/About";
 import SignIn from "./pages/SignIn";
 import SignUp from "./pages/SignUp";
 import ProfileSetup from "./pages/modules/ProfileSetup";
+import UserSettings from "./pages/modules/UserSettings";
 
 import BodyComposition from "./pages/modules/BodyComposition";
+import BodyCompositionHistory from "./pages/modules/BodyCompositionHistory";
 import CalorieEstimation from "./pages/modules/CalorieEstimation";
 import NutritionRecommendation from "./pages/modules/NutritionRecommendation";
 import FitnessGuidance from "./pages/modules/FitnessGuidance";
@@ -24,8 +26,10 @@ export default function App() {
         <Route path="/signin" element={<SignIn />} />
         <Route path="/signup" element={<SignUp />} />
         <Route path="/profile-setup" element={<ProfileSetup />} />
+        <Route path="/settings" element={<UserSettings />} />
 
         <Route path="/body-composition" element={<BodyComposition />} />
+        <Route path="/body-composition/history" element={<BodyCompositionHistory />} />
         <Route path="/calorie-estimation" element={<CalorieEstimation />} />
         <Route path="/nutrition" element={<NutritionRecommendation />} />
         <Route path="/fitness-guidance" element={<FitnessGuidance />} />

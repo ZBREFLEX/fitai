@@ -185,6 +185,14 @@ export default function Navbar() {
                     >
                       Profile
                     </Link>
+                    <Link
+                      to="/settings"
+                      className="block px-4 py-2 text-neutral hover:text-accent hover:bg-primary transition-colors text-sm"
+                      onClick={() => setShowUserMenu(false)}
+                    >
+                      Settings
+                    </Link>
+                    <div className="border-t border-primary my-1"></div>
                     <button
                       onClick={handleLogout}
                       className="w-full text-left px-4 py-2 text-neutral hover:text-accent hover:bg-primary transition-colors text-sm"
@@ -274,6 +282,13 @@ export default function Navbar() {
                   onClick={() => setIsOpen(false)}
                 >
                   Profile
+                </Link>
+                <Link
+                  to="/settings"
+                  className="block px-3 py-2 text-neutral hover:text-accent hover:bg-secondary rounded-lg"
+                  onClick={() => setIsOpen(false)}
+                >
+                  Settings
                 </Link>
                 <button
                   onClick={() => {

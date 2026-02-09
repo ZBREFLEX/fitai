@@ -1,57 +1,102 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
+const API_URL = "http://localhost:8000/api";
+
 export default function BodyComposition() {
-  const [metrics, setMetrics] = useState({
-    bmi: 0,
-    bmiCategory: "",
-    bodyFat: 0,
-    leanMass: 0,
-  });
+  const [measurement, setMeasurement] = useState(null);
+  const [hasTodayMeasurement, setHasTodayMeasurement] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const userProfile = JSON.parse(localStorage.getItem("fitAI_userProfile"));
-
-    if (userProfile) {
-      const { weight, height, age, gender } = userProfile;
-
-      // Calculate BMI
-      const heightInMeters = height / 100;
-      const bmiValue = (weight / (heightInMeters * heightInMeters)).toFixed(1);
-
-      // BMI Category
-      let category = "";
-      if (bmiValue < 18.5) category = "Underweight";
-      else if (bmiValue < 24.9) category = "Normal weight";
-      else if (bmiValue < 29.9) category = "Overweight";
-      else category = "Obesity";
-
-      // Calculate Body Fat (Deurenberg formula)
-      // Body fat % = (1.20 × BMI) + (0.23 × Age) - (10.8 × sex) - 5.4
-      // sex: 1 for men, 0 for women
-      const sexValue = gender === "male" ? 1 : 0;
-      const bodyFatValue = (
-        1.2 * bmiValue +
-        0.23 * age -
-        10.8 * sexValue -
-        5.4
-      ).toFixed(1);
-
-      // Lean Body Mass
-      const leanMassValue = (weight * (1 - bodyFatValue / 100)).toFixed(1);
-
-      setMetrics({
-        bmi: bmiValue,
-        bmiCategory: category,
-        bodyFat: bodyFatValue,
-        leanMass: leanMassValue,
-      });
-    }
+    fetchLatestMeasurement();
+    checkTodayMeasurement();
   }, []);
+
+  const fetchLatestMeasurement = async () => {
+    try {
+      const token = localStorage.getItem("access_token") || sessionStorage.getItem("access_token");
+      const response = await fetch(`${API_URL}/body-measurements/latest/`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setMeasurement(data);
+      }
+    } catch (error) {
+      console.error("Error fetching measurement:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const checkTodayMeasurement = async () => {
+    try {
+      const token = localStorage.getItem("access_token") || sessionStorage.getItem("access_token");
+      const response = await fetch(`${API_URL}/body-measurements/check-today/`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setHasTodayMeasurement(data.has_measurement);
+      }
+    } catch (error) {
+      console.error("Error checking today's measurement:", error);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="hero-gradient min-h-screen flex items-center justify-center">
+        <div className="text-neutral">Loading...</div>
+      </div>
+    );
+  }
+
+  // If no measurements exist yet, show welcome screen
+  if (!measurement) {
+    return (
+      <div className="hero-gradient min-h-screen p-6">
+        <div className="max-w-2xl mx-auto text-center">
+          <div className="text-6xl mb-6">📊</div>
+          <h1 className="text-4xl font-bold text-neutral mb-4">
+            Body Composition Analysis
+          </h1>
+          <p className="text-neutral text-opacity-70 mb-8 text-lg">
+            Track your BMI, body fat percentage, and lean mass over time.
+            <br />
+            Take your first measurement to get started!
+          </p>
+          
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Link
+              to="/profile-setup"
+              className="px-8 py-4 bg-accent text-primary font-bold rounded-lg hover:bg-opacity-90 transition-all shadow-lg"
+            >
+              Take First Measurement
+            </Link>
+            <Link
+              to="/body-composition/history"
+              className="px-8 py-4 border border-accent text-neutral rounded-lg hover:bg-secondary transition-all"
+            >
+              View History
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="hero-gradient min-h-screen p-6">
       <div className="max-w-4xl mx-auto">
+        {/* Header */}
         <div className="text-center mb-10">
           <h1 className="text-4xl font-bold text-neutral mb-2">
             Body Composition Analysis
@@ -59,14 +104,16 @@ export default function BodyComposition() {
           <p className="text-neutral text-opacity-70">
             Based on your physiological data
           </p>
+          <p className="text-sm text-neutral text-opacity-50 mt-2">
+            Last updated: {new Date(measurement.date_recorded).toLocaleDateString()}
+          </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Metrics Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           {/* BMI Card */}
           <div className="bg-primary rounded-2xl border border-secondary p-6 shadow-xl relative overflow-hidden group">
-            <div
-              className={`absolute top-0 right-0 p-4 opacity-10 text-9xl font-bold text-neutral group-hover:scale-110 transition-transform duration-500`}
-            >
+            <div className="absolute top-0 right-0 p-4 opacity-10 text-9xl font-bold text-neutral group-hover:scale-110 transition-transform duration-500">
               BMI
             </div>
             <div className="relative z-10">
@@ -76,18 +123,18 @@ export default function BodyComposition() {
               </p>
 
               <div className="text-5xl font-bold text-accent mb-2">
-                {metrics.bmi}
+                {measurement.bmi}
               </div>
               <div
                 className={`inline-block px-3 py-1 rounded-full text-xs font-bold ${
-                  metrics.bmiCategory === "Normal weight"
+                  measurement.bmi_category === "Normal weight"
                     ? "bg-green-500/20 text-green-400"
-                    : metrics.bmiCategory === "Overweight"
-                      ? "bg-yellow-500/20 text-yellow-400"
-                      : "bg-red-500/20 text-red-400"
+                    : measurement.bmi_category === "Overweight"
+                    ? "bg-yellow-500/20 text-yellow-400"
+                    : "bg-red-500/20 text-red-400"
                 }`}
               >
-                {metrics.bmiCategory}
+                {measurement.bmi_category}
               </div>
             </div>
           </div>
@@ -104,7 +151,7 @@ export default function BodyComposition() {
               </p>
 
               <div className="text-5xl font-bold text-accent2 mb-2">
-                {metrics.bodyFat}%
+                {measurement.body_fat_percentage}%
               </div>
               <p className="text-xs text-neutral text-opacity-50">
                 Using Deurenberg formula
@@ -124,7 +171,7 @@ export default function BodyComposition() {
               </p>
 
               <div className="text-5xl font-bold text-blue-400 mb-2">
-                {metrics.leanMass} <span className="text-2xl">kg</span>
+                {measurement.lean_mass} <span className="text-2xl">kg</span>
               </div>
               <p className="text-xs text-neutral text-opacity-50">
                 Approximate value
@@ -133,10 +180,66 @@ export default function BodyComposition() {
           </div>
         </div>
 
-        <div className="mt-10 flex justify-center">
+        {/* Additional Info */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          {/* BMR & TDEE */}
+          <div className="bg-primary rounded-2xl border border-secondary p-6 shadow-lg">
+            <h3 className="text-lg font-bold text-neutral mb-4">Energy Expenditure</h3>
+            <div className="space-y-3">
+              <div className="flex justify-between">
+                <span className="text-neutral text-opacity-70">BMR (Basal Metabolic Rate)</span>
+                <span className="text-neutral font-semibold">{measurement.bmr} kcal</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-neutral text-opacity-70">TDEE (Total Daily Energy)</span>
+                <span className="text-neutral font-semibold">{measurement.tdee} kcal</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-neutral text-opacity-70">Activity Level</span>
+                <span className="text-accent capitalize">{measurement.activity_level.replace('_', ' ')}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Stats */}
+          <div className="bg-primary rounded-2xl border border-secondary p-6 shadow-lg">
+            <h3 className="text-lg font-bold text-neutral mb-4">Current Stats</h3>
+            <div className="space-y-3">
+              <div className="flex justify-between">
+                <span className="text-neutral text-opacity-70">Height</span>
+                <span className="text-neutral font-semibold">{measurement.height} cm</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-neutral text-opacity-70">Weight</span>
+                <span className="text-neutral font-semibold">{measurement.weight} kg</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-neutral text-opacity-70">Age</span>
+                <span className="text-neutral font-semibold">{measurement.age} years</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex flex-wrap justify-center gap-4">
+          <Link
+            to={hasTodayMeasurement ? "/profile-setup" : "/profile-setup"}
+            className="px-6 py-3 bg-accent text-primary font-bold rounded-lg hover:bg-opacity-90 transition-all shadow-lg"
+          >
+            {hasTodayMeasurement ? "Update Today's Measurement" : "Add New Measurement"}
+          </Link>
+          
+          <Link
+            to="/body-composition/history"
+            className="px-6 py-3 border border-accent text-neutral rounded-lg hover:bg-secondary transition-all"
+          >
+            View Full History
+          </Link>
+          
           <Link
             to="/calorie-estimation"
-            className="btn-primary flex items-center gap-2"
+            className="px-6 py-3 bg-secondary text-neutral rounded-lg hover:bg-opacity-80 transition-all flex items-center gap-2"
           >
             Next: Calorie Estimation
             <svg
