@@ -1,24 +1,142 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+
+const API_URL = "http://localhost:8000/api";
 
 export default function SignIn() {
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
+  
   const [formData, setFormData] = useState({
     email: "",
     password: "",
     rememberMe: false,
   });
 
-  const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: type === "checkbox" ? checked : value,
-    }));
+  // Validate email
+  const validateEmail = (email) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email) return "Email is required";
+    if (!emailRegex.test(email)) return "Please enter a valid email address";
+    return true;
   };
 
-  const handleSubmit = (e) => {
+  // Validate password
+  const validatePassword = (password) => {
+    if (!password) return "Password is required";
+    return true;
+  };
+
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    const fieldValue = type === "checkbox" ? checked : value;
+    
+    setFormData((prev) => ({
+      ...prev,
+      [name]: fieldValue,
+    }));
+    
+    // Validate field on change
+    if (name === 'email') {
+      const validation = validateEmail(fieldValue);
+      setFieldErrors((prev) => ({
+        ...prev,
+        email: validation === true ? "" : validation
+      }));
+    } else if (name === 'password') {
+      const validation = validatePassword(fieldValue);
+      setFieldErrors((prev) => ({
+        ...prev,
+        password: validation === true ? "" : validation
+      }));
+    }
+    
+    setError("");
+  };
+
+  const validateForm = () => {
+    const errors = {};
+    let isValid = true;
+
+    const emailValidation = validateEmail(formData.email);
+    if (emailValidation !== true) {
+      errors.email = emailValidation;
+      isValid = false;
+    }
+
+    const passwordValidation = validatePassword(formData.password);
+    if (passwordValidation !== true) {
+      errors.password = passwordValidation;
+      isValid = false;
+    }
+
+    setFieldErrors(errors);
+    return isValid;
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log("Sign in:", formData);
+    
+    if (!validateForm()) {
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    try {
+      // Clear any old tokens before attempting login
+      const response = await fetch(`${API_URL}/login/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: formData.email.toLowerCase(),
+          password: formData.password,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        // Store JWT tokens and user info
+        const storage = formData.rememberMe ? localStorage : sessionStorage;
+        storage.setItem('access_token', data.tokens.access);
+        storage.setItem('refresh_token', data.tokens.refresh);
+        storage.setItem('user', JSON.stringify(data.user));
+        
+        // Dispatch custom event to notify Navbar
+        window.dispatchEvent(new Event('userLoggedIn'));
+        
+        // Redirect to dashboard or home
+        navigate("/");
+      } else {
+        if (data.email) {
+          setFieldErrors((prev) => ({ ...prev, email: data.email }));
+        }
+        if (data.password) {
+          setFieldErrors((prev) => ({ ...prev, password: data.password }));
+        }
+        
+        const errorMessage = data.error || "Invalid email or password.";
+        setError(typeof errorMessage === 'object' ? Object.values(errorMessage).flat().join(', ') : errorMessage);
+      }
+    } catch (err) {
+      setError("Network error. Please check your connection and try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getInputClassName = (fieldName) => {
+    const baseClass = "w-full px-4 py-3 bg-secondary text-neutral rounded-lg border border-accent border-opacity-20 focus:border-accent focus:border-opacity-100 outline-none transition-colors";
+    if (fieldErrors[fieldName]) {
+      return baseClass + " border-red-500 border-opacity-100";
+    }
+    return baseClass;
   };
 
   return (
@@ -34,27 +152,37 @@ export default function SignIn() {
             </p>
           </div>
 
+          {/* Error Message */}
+          {error && (
+            <div className="mb-4 p-3 bg-red-500 bg-opacity-20 border border-red-500 rounded-lg text-red-300 text-sm">
+              {error}
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-5">
             {/* Email Field */}
             <div>
               <label className="block text-neutral text-sm font-semibold mb-2">
-                Email Address
+                Email Address *
               </label>
               <input
                 type="email"
                 name="email"
                 value={formData.email}
                 onChange={handleChange}
-                className="w-full px-4 py-3 bg-secondary text-neutral rounded-lg border border-accent border-opacity-20 focus:border-accent focus:border-opacity-100 outline-none transition-colors"
+                className={getInputClassName('email')}
                 placeholder="you@example.com"
               />
+              {fieldErrors.email && (
+                <p className="mt-1 text-red-400 text-xs">{fieldErrors.email}</p>
+              )}
             </div>
 
             {/* Password Field */}
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="block text-neutral text-sm font-semibold">
-                  Password
+                  Password *
                 </label>
                 <Link
                   to="/forgot-password"
@@ -68,9 +196,12 @@ export default function SignIn() {
                 name="password"
                 value={formData.password}
                 onChange={handleChange}
-                className="w-full px-4 py-3 bg-secondary text-neutral rounded-lg border border-accent border-opacity-20 focus:border-accent focus:border-opacity-100 outline-none transition-colors"
+                className={getInputClassName('password')}
                 placeholder="••••••••"
               />
+              {fieldErrors.password && (
+                <p className="mt-1 text-red-400 text-xs">{fieldErrors.password}</p>
+              )}
             </div>
 
             {/* Remember Me */}
@@ -91,9 +222,12 @@ export default function SignIn() {
             {/* Sign In Button */}
             <button
               type="submit"
-              className="w-full py-3 bg-accent text-primary font-bold rounded-lg hover:bg-opacity-90 transition-all shadow-lg mt-8"
+              disabled={loading}
+              className={`w-full py-3 bg-accent text-primary font-bold rounded-lg hover:bg-opacity-90 transition-all shadow-lg mt-8 ${
+                loading ? "opacity-50 cursor-not-allowed" : ""
+              }`}
             >
-              Sign In
+              {loading ? "Signing In..." : "Sign In"}
             </button>
           </form>
 
