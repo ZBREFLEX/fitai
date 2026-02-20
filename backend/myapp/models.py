@@ -265,3 +265,202 @@ class UserProfile(models.Model):
             self.phone = ''.join(filter(str.isdigit, str(self.phone)))
         self.clean()
         super().save(*args, **kwargs)
+
+
+class CustomFood(models.Model):
+    """Custom foods created by users."""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='custom_foods')
+    food_name = models.CharField(max_length=200)
+    calories = models.IntegerField(
+        validators=[MinValueValidator(0), MaxValueValidator(2000)],
+        help_text='Calories per serving'
+    )
+    protein = models.FloatField(
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text='Protein in grams per serving'
+    )
+    carbs = models.FloatField(
+        validators=[MinValueValidator(0), MaxValueValidator(300)],
+        help_text='Carbs in grams per serving'
+    )
+    fats = models.FloatField(
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text='Fats in grams per serving'
+    )
+    serving_size = models.CharField(max_length=50, default='100g', help_text='e.g., 100g, 1 cup, 1 piece')
+    is_favorite = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-is_favorite', '-created_at']
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.food_name}"
+
+
+class MealEntry(models.Model):
+    """User meal entries for daily tracking."""
+    MEAL_TYPE_CHOICES = [
+        ('breakfast', 'Breakfast'),
+        ('lunch', 'Lunch'),
+        ('dinner', 'Dinner'),
+        ('snack', 'Snack'),
+    ]
+    
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='meal_entries')
+    date = models.DateField(default=timezone.now)
+    meal_type = models.CharField(max_length=20, choices=MEAL_TYPE_CHOICES)
+    
+    # Food details
+    food_name = models.CharField(max_length=200)
+    quantity = models.FloatField(help_text='Quantity in grams or serving size')
+    
+    # Nutritional info (at time of entry)
+    calories = models.IntegerField()
+    protein = models.FloatField()
+    carbs = models.FloatField()
+    fats = models.FloatField()
+    
+    # Optional
+    custom_food = models.ForeignKey(CustomFood, on_delete=models.SET_NULL, null=True, blank=True, related_name='meal_entries')
+    notes = models.TextField(blank=True, null=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-date', '-created_at']
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.meal_type} - {self.date}"
+
+
+class WorkoutEntry(models.Model):
+    """User workout entries for tracking."""
+    INTENSITY_CHOICES = [
+        ('light', 'Light'),
+        ('moderate', 'Moderate'),
+        ('intense', 'Intense'),
+    ]
+    
+    WORKOUT_TYPE_CHOICES = [
+        ('cardio', 'Cardio'),
+        ('strength', 'Strength Training'),
+        ('flexibility', 'Flexibility/Yoga'),
+        ('sports', 'Sports'),
+        ('walking', 'Walking'),
+        ('cycling', 'Cycling'),
+        ('swimming', 'Swimming'),
+        ('running', 'Running'),
+        ('hiit', 'HIIT'),
+        ('other', 'Other'),
+    ]
+    
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='workout_entries')
+    date = models.DateField(default=timezone.now)
+    
+    # Workout details
+    workout_type = models.CharField(max_length=50, choices=WORKOUT_TYPE_CHOICES)
+    exercise_name = models.CharField(max_length=200, blank=True, help_text='Optional: specific exercise name')
+    duration_minutes = models.IntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(480)],
+        help_text='Duration in minutes'
+    )
+    intensity = models.CharField(max_length=20, choices=INTENSITY_CHOICES, default='moderate')
+    
+    # Calculated
+    calories_burned = models.IntegerField()
+    
+    # Optional
+    notes = models.TextField(blank=True, null=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-date', '-created_at']
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.workout_type} - {self.date}"
+    
+    def calculate_calories_burned(self):
+        """Calculate calories burned based on type, duration, and intensity."""
+        # Base calories per minute for different activities
+        base_calories = {
+            'cardio': 8,
+            'strength': 6,
+            'flexibility': 3,
+            'sports': 7,
+            'walking': 4,
+            'cycling': 9,
+            'swimming': 10,
+            'running': 12,
+            'hiit': 14,
+            'other': 5,
+        }
+        
+        # Intensity multipliers
+        intensity_multipliers = {
+            'light': 0.8,
+            'moderate': 1.0,
+            'intense': 1.3,
+        }
+        
+        base = base_calories.get(self.workout_type, 5)
+        multiplier = intensity_multipliers.get(self.intensity, 1.0)
+        return int(base * self.duration_minutes * multiplier)
+    
+    def save(self, *args, **kwargs):
+        """Auto-calculate calories burned before saving."""
+        self.calories_burned = self.calculate_calories_burned()
+        super().save(*args, **kwargs)
+
+
+class DailyStreak(models.Model):
+    """Track user's daily activity streak."""
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='daily_streak')
+    current_streak = models.IntegerField(default=0)
+    longest_streak = models.IntegerField(default=0)
+    last_activity_date = models.DateField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.current_streak} day streak"
+    
+    def update_streak(self):
+        """Update streak based on recent activity."""
+        today = timezone.now().date()
+        
+        # Check if user has any meal or workout entry today
+        has_activity_today = (
+            MealEntry.objects.filter(user=self.user, date=today).exists() or
+            WorkoutEntry.objects.filter(user=self.user, date=today).exists()
+        )
+        
+        if not has_activity_today:
+            # Check if there was activity yesterday
+            yesterday = today - timezone.timedelta(days=1)
+            if self.last_activity_date != yesterday:
+                # Streak broken
+                self.current_streak = 0
+            return
+        
+        # Has activity today
+        if self.last_activity_date == today:
+            # Already counted today
+            return
+        
+        if self.last_activity_date == timezone.now().date() - timezone.timedelta(days=1):
+            # Continuing streak
+            self.current_streak += 1
+        else:
+            # New streak
+            self.current_streak = 1
+        
+        # Update longest streak
+        if self.current_streak > self.longest_streak:
+            self.longest_streak = self.current_streak
+        
+        self.last_activity_date = today
+        self.save()

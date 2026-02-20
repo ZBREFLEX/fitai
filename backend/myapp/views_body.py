@@ -9,14 +9,21 @@ from django.utils import timezone
 from datetime import timedelta
 from decimal import Decimal
 
-from .models import UserSettings, Goal, BodyMeasurement
+from .models import UserSettings, Goal, BodyMeasurement, CustomFood, MealEntry, WorkoutEntry, DailyStreak
 from .serializers_body import (
     UserSettingsSerializer,
     GoalSerializer,
     BodyMeasurementListSerializer,
     BodyMeasurementDetailSerializer,
     BodyMeasurementCreateSerializer,
-    BodyMeasurementStatsSerializer
+    BodyMeasurementStatsSerializer,
+    CustomFoodSerializer,
+    MealEntrySerializer,
+    MealEntryCreateSerializer,
+    WorkoutEntrySerializer,
+    WorkoutEntryCreateSerializer,
+    DailyStreakSerializer,
+    DailySummarySerializer
 )
 
 
@@ -101,6 +108,9 @@ def user_goal(request):
 @permission_classes([IsAuthenticated])
 def body_measurement_list(request):
     """List all measurements or create new one."""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     if request.method == 'GET':
         measurements = BodyMeasurement.objects.filter(user=request.user)
         
@@ -121,15 +131,28 @@ def body_measurement_list(request):
         return Response(serializer.data)
     
     elif request.method == 'POST':
+        logger.info(f"Create measurement request from user: {request.user}")
+        logger.info(f"Request data: {request.data}")
+        
         serializer = BodyMeasurementCreateSerializer(
             data=request.data,
             context={'request': request}
         )
         if serializer.is_valid():
-            measurement = serializer.save()
-            # Return detailed view
-            detail_serializer = BodyMeasurementDetailSerializer(measurement)
-            return Response(detail_serializer.data, status=status.HTTP_201_CREATED)
+            try:
+                measurement = serializer.save()
+                logger.info(f"Measurement created successfully: {measurement.id}")
+                # Return detailed view
+                detail_serializer = BodyMeasurementDetailSerializer(measurement)
+                return Response(detail_serializer.data, status=status.HTTP_201_CREATED)
+            except Exception as e:
+                logger.error(f"Error saving measurement: {str(e)}")
+                return Response(
+                    {'error': f'Failed to save measurement: {str(e)}'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+        
+        logger.error(f"Serializer errors: {serializer.errors}")
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -273,3 +296,196 @@ def check_today_measurement(request):
         })
     
     return Response({'has_measurement': False})
+
+
+# ==================== CUSTOM FOODS ====================
+
+@api_view(['GET', 'POST'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticated])
+def custom_foods(request):
+    """List all custom foods or create new one."""
+    if request.method == 'GET':
+        foods = CustomFood.objects.filter(user=request.user)
+        
+        # Filter favorites if requested
+        is_favorite = request.query_params.get('favorite')
+        if is_favorite == 'true':
+            foods = foods.filter(is_favorite=True)
+        
+        serializer = CustomFoodSerializer(foods, many=True)
+        return Response(serializer.data)
+    
+    elif request.method == 'POST':
+        serializer = CustomFoodSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(user=request.user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['DELETE', 'PUT'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticated])
+def custom_food_detail(request, pk):
+    """Delete or update custom food."""
+    try:
+        food = CustomFood.objects.get(pk=pk, user=request.user)
+    except CustomFood.DoesNotExist:
+        return Response({'error': 'Food not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method == 'DELETE':
+        food.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    
+    elif request.method == 'PUT':
+        serializer = CustomFoodSerializer(food, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# ==================== MEAL ENTRIES ====================
+
+@api_view(['GET', 'POST'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticated])
+def meal_entries(request):
+    """List all meal entries or create new one."""
+    if request.method == 'GET':
+        date = request.query_params.get('date')
+        meals = MealEntry.objects.filter(user=request.user)
+        
+        if date:
+            meals = meals.filter(date=date)
+        
+        serializer = MealEntrySerializer(meals, many=True)
+        return Response(serializer.data)
+    
+    elif request.method == 'POST':
+        serializer = MealEntryCreateSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            meal = serializer.save()
+            # Update streak
+            update_user_streak(request.user)
+            return Response(MealEntrySerializer(meal).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['DELETE'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticated])
+def meal_entry_detail(request, pk):
+    """Delete meal entry."""
+    try:
+        meal = MealEntry.objects.get(pk=pk, user=request.user)
+    except MealEntry.DoesNotExist:
+        return Response({'error': 'Meal not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    meal.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ==================== WORKOUT ENTRIES ====================
+
+@api_view(['GET', 'POST'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticated])
+def workout_entries(request):
+    """List all workout entries or create new one."""
+    if request.method == 'GET':
+        date = request.query_params.get('date')
+        workouts = WorkoutEntry.objects.filter(user=request.user)
+        
+        if date:
+            workouts = workouts.filter(date=date)
+        
+        serializer = WorkoutEntrySerializer(workouts, many=True)
+        return Response(serializer.data)
+    
+    elif request.method == 'POST':
+        serializer = WorkoutEntryCreateSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            workout = serializer.save()
+            # Update streak
+            update_user_streak(request.user)
+            return Response(WorkoutEntrySerializer(workout).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['DELETE'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticated])
+def workout_entry_detail(request, pk):
+    """Delete workout entry."""
+    try:
+        workout = WorkoutEntry.objects.get(pk=pk, user=request.user)
+    except WorkoutEntry.DoesNotExist:
+        return Response({'error': 'Workout not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    workout.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ==================== DAILY SUMMARY ====================
+
+def update_user_streak(user):
+    """Update user's daily streak."""
+    streak, created = DailyStreak.objects.get_or_create(user=user)
+    streak.update_streak()
+
+
+@api_view(['GET'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticated])
+def daily_summary(request):
+    """Get daily summary for a specific date."""
+    date = request.query_params.get('date', timezone.now().date())
+    
+    # Get latest measurement for TDEE
+    latest_measurement = BodyMeasurement.objects.filter(user=request.user).order_by('-date_recorded').first()
+    tdee = int(latest_measurement.tdee) if latest_measurement else 2000
+    
+    # Get meals for the date
+    meals = MealEntry.objects.filter(user=request.user, date=date)
+    total_calories = sum(m.calories for m in meals)
+    total_protein = sum(m.protein for m in meals)
+    total_carbs = sum(m.carbs for m in meals)
+    total_fats = sum(m.fats for m in meals)
+    meals_count = meals.count()
+    
+    # Get workouts for the date
+    workouts = WorkoutEntry.objects.filter(user=request.user, date=date)
+    total_calories_burned = sum(w.calories_burned for w in workouts)
+    workouts_count = workouts.count()
+    
+    # Calculate net calories
+    net_calories = total_calories - total_calories_burned
+    
+    data = {
+        'date': date,
+        'total_calories': total_calories,
+        'total_protein': total_protein,
+        'total_carbs': total_carbs,
+        'total_fats': total_fats,
+        'total_calories_burned': total_calories_burned,
+        'tdee': tdee,
+        'net_calories': net_calories,
+        'meals_count': meals_count,
+        'workouts_count': workouts_count,
+    }
+    
+    serializer = DailySummarySerializer(data)
+    return Response(serializer.data)
+
+
+@api_view(['GET'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticated])
+def user_streak(request):
+    """Get user's daily streak."""
+    streak, created = DailyStreak.objects.get_or_create(user=request.user)
+    serializer = DailyStreakSerializer(streak)
+    return Response(serializer.data)
+

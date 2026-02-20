@@ -15,9 +15,9 @@ class UserProfileSerializer(serializers.ModelSerializer):
 class UserRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
     confirm_password = serializers.CharField(write_only=True)
-    phone = serializers.CharField(required=False, allow_blank=True)
+    phone = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     age = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=150)
-    gender = serializers.CharField(required=False, allow_blank=True)
+    gender = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     name = serializers.CharField(required=True, max_length=150)
 
     class Meta:
@@ -40,17 +40,21 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
     def validate_phone(self, value):
         """Validate Indian phone number (10 digits starting with 6-9)."""
+        # Allow None, empty string, or actual phone numbers
         if not value:
-            return value
+            return None
 
         # Remove any spaces or special characters
         cleaned = ''.join(filter(str.isdigit, str(value)))
 
+        if len(cleaned) == 0:
+            return None  # If only spaces/special chars, treat as empty
+            
         if len(cleaned) != 10:
             raise serializers.ValidationError("Phone number must be exactly 10 digits.")
 
         if not cleaned[0] in '6789':
-            raise serializers.ValidationError("Indian phone number must start with 6, 7, 8, or 9.")
+            raise serializers.ValidationError("Phone number must start with 6, 7, 8, or 9.")
 
         return cleaned
 
@@ -62,11 +66,9 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         return value
 
     def validate_password(self, value):
-        """Validate password using Django's built-in validators."""
-        try:
-            validate_password(value)
-        except DjangoValidationError as e:
-            raise serializers.ValidationError(list(e.messages))
+        """Validate password meets minimum requirements."""
+        if len(value) < 6:
+            raise serializers.ValidationError("Password must be at least 6 characters.")
         return value
 
     def validate(self, data):

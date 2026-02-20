@@ -3,7 +3,7 @@ from django.contrib.auth.models import User
 from django.db.models import Q
 from django.utils import timezone
 from datetime import timedelta
-from .models import UserSettings, Goal, BodyMeasurement, UserProfile
+from .models import UserSettings, Goal, BodyMeasurement, UserProfile, CustomFood, MealEntry, WorkoutEntry, DailyStreak
 
 
 class UserSettingsSerializer(serializers.ModelSerializer):
@@ -158,3 +158,82 @@ class UserProfileWithMeasurementsSerializer(serializers.ModelSerializer):
         if latest:
             return BodyMeasurementListSerializer(latest).data
         return None
+
+
+class CustomFoodSerializer(serializers.ModelSerializer):
+    """Serializer for custom foods."""
+    class Meta:
+        model = CustomFood
+        fields = ['id', 'food_name', 'calories', 'protein', 'carbs', 'fats', 'serving_size', 'is_favorite', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+
+class MealEntrySerializer(serializers.ModelSerializer):
+    """Serializer for meal entries."""
+    custom_food_name = serializers.CharField(source='custom_food.food_name', read_only=True)
+    
+    class Meta:
+        model = MealEntry
+        fields = [
+            'id', 'date', 'meal_type', 'food_name', 'quantity', 'calories', 
+            'protein', 'carbs', 'fats', 'custom_food', 'custom_food_name', 'notes', 'created_at'
+        ]
+        read_only_fields = ['id', 'created_at']
+
+
+class MealEntryCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating meal entries."""
+    class Meta:
+        model = MealEntry
+        fields = ['date', 'meal_type', 'food_name', 'quantity', 'calories', 'protein', 'carbs', 'fats', 'custom_food', 'notes']
+    
+    def create(self, validated_data):
+        """Create meal entry with current user."""
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)
+
+
+class WorkoutEntrySerializer(serializers.ModelSerializer):
+    """Serializer for workout entries."""
+    class Meta:
+        model = WorkoutEntry
+        fields = [
+            'id', 'date', 'workout_type', 'exercise_name', 'duration_minutes', 
+            'intensity', 'calories_burned', 'notes', 'created_at'
+        ]
+        read_only_fields = ['id', 'calories_burned', 'created_at']
+
+
+class WorkoutEntryCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating workout entries."""
+    class Meta:
+        model = WorkoutEntry
+        fields = ['date', 'workout_type', 'exercise_name', 'duration_minutes', 'intensity', 'notes']
+    
+    def create(self, validated_data):
+        """Create workout entry with current user."""
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)
+
+
+class DailyStreakSerializer(serializers.ModelSerializer):
+    """Serializer for daily streak."""
+    class Meta:
+        model = DailyStreak
+        fields = ['id', 'current_streak', 'longest_streak', 'last_activity_date', 'updated_at']
+        read_only_fields = ['id', 'current_streak', 'longest_streak', 'last_activity_date', 'updated_at']
+
+
+class DailySummarySerializer(serializers.Serializer):
+    """Serializer for daily summary stats."""
+    date = serializers.DateField()
+    total_calories = serializers.IntegerField()
+    total_protein = serializers.FloatField()
+    total_carbs = serializers.FloatField()
+    total_fats = serializers.FloatField()
+    total_calories_burned = serializers.IntegerField()
+    tdee = serializers.IntegerField()
+    net_calories = serializers.IntegerField()
+    meals_count = serializers.IntegerField()
+    workouts_count = serializers.IntegerField()
+

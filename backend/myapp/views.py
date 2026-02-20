@@ -28,6 +28,11 @@ def register_user(request):
     Register a new user with profile information using Django's default auth system.
     Returns JWT tokens upon successful registration.
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"Register attempt with data: {request.data}")
+    
     serializer = UserRegistrationSerializer(data=request.data)
 
     if serializer.is_valid():
@@ -39,15 +44,18 @@ def register_user(request):
                 'user': UserSerializer(user).data,
                 'tokens': tokens
             }, status=status.HTTP_201_CREATED)
-        except IntegrityError:
+        except IntegrityError as e:
+            logger.error(f"IntegrityError during registration: {str(e)}")
             return Response({
                 'error': 'A user with this email already exists.'
             }, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
+            logger.error(f"Registration failed: {str(e)}")
             return Response({
                 'error': f'Registration failed: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    logger.error(f"Serializer errors: {serializer.errors}")
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
