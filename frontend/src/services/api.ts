@@ -14,6 +14,7 @@ export interface RegisterCredentials {
   phone?: string;
   age?: number;
   gender?: string;
+  medical_conditions?: string;
 }
 
 export interface AuthResponse {
@@ -75,6 +76,9 @@ export const authAPI = {
     if (credentials.gender && credentials.gender.trim()) {
       payload.gender = credentials.gender;
     }
+    if (credentials.medical_conditions && credentials.medical_conditions.trim()) {
+      payload.medical_conditions = credentials.medical_conditions;
+    }
 
     const response = await fetch(`${API_URL}/register/`, {
       method: "POST",
@@ -87,7 +91,7 @@ export const authAPI = {
     if (!response.ok) {
       const error = await response.json();
       console.error("Registration error:", error);
-      
+
       // If error is an object with field errors, convert to string
       if (typeof error === "object" && error !== null) {
         const errorMessage = Object.entries(error)
@@ -98,7 +102,7 @@ export const authAPI = {
           .join(" | ");
         throw new Error(errorMessage);
       }
-      
+
       throw new Error(error.error || error.message || "Registration failed");
     }
 
@@ -348,8 +352,12 @@ export const mealAPI = {
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(JSON.stringify(error));
+      try {
+        const error = await response.json();
+        throw new Error(JSON.stringify(error));
+      } catch (e) {
+        throw new Error(`Server error: ${response.status} ${response.statusText}`);
+      }
     }
 
     return await response.json();
@@ -411,8 +419,12 @@ export const customFoodAPI = {
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(JSON.stringify(error));
+      try {
+        const error = await response.json();
+        throw new Error(JSON.stringify(error));
+      } catch (e) {
+        throw new Error(`Server error: ${response.status} ${response.statusText}`);
+      }
     }
 
     return await response.json();
@@ -468,6 +480,20 @@ export const customFoodAPI = {
     if (!response.ok) throw new Error("Failed to update food");
     return await response.json();
   },
+
+  getAllFoods: async () => {
+    const accessToken = tokenService.getAccessToken();
+    if (!accessToken) throw new Error("Not authenticated");
+
+    const response = await fetch(`${API_URL}/all-foods/`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!response.ok) throw new Error("Failed to fetch all foods");
+    return await response.json();
+  },
 };
 
 // Workout API
@@ -493,8 +519,12 @@ export const workoutAPI = {
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(JSON.stringify(error));
+      try {
+        const error = await response.json();
+        throw new Error(JSON.stringify(error));
+      } catch (e) {
+        throw new Error(`Server error: ${response.status} ${response.statusText}`);
+      }
     }
 
     return await response.json();
@@ -533,6 +563,78 @@ export const workoutAPI = {
   },
 };
 
+export const customWorkoutAPI = {
+  create: async (data: {
+    name: string;
+    workout_type: string;
+    duration_minutes: number;
+    intensity: string;
+    body_part?: string;
+    notes?: string;
+  }) => {
+    const accessToken = tokenService.getAccessToken();
+    if (!accessToken) throw new Error("Not authenticated");
+
+    const response = await fetch(`${API_URL}/custom-workouts/`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) throw new Error("Failed to create custom workout");
+    return await response.json();
+  },
+
+  getAll: async () => {
+    const accessToken = tokenService.getAccessToken();
+    if (!accessToken) throw new Error("Not authenticated");
+
+    const response = await fetch(`${API_URL}/custom-workouts/`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!response.ok) throw new Error("Failed to fetch custom workouts");
+    return await response.json();
+  },
+
+  update: async (id: number, data: any) => {
+    const accessToken = tokenService.getAccessToken();
+    if (!accessToken) throw new Error("Not authenticated");
+
+    const response = await fetch(`${API_URL}/custom-workouts/${id}/`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) throw new Error("Failed to update custom workout");
+    return await response.json();
+  },
+
+  delete: async (id: number) => {
+    const accessToken = tokenService.getAccessToken();
+    if (!accessToken) throw new Error("Not authenticated");
+
+    const response = await fetch(`${API_URL}/custom-workouts/${id}/`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!response.ok) throw new Error("Failed to delete custom workout");
+    return response.status === 204;
+  },
+};
+
 // Daily Summary API
 export const summaryAPI = {
   getDailySummary: async (date?: string) => {
@@ -565,4 +667,139 @@ export const summaryAPI = {
     if (!response.ok) throw new Error("Failed to fetch streak");
     return await response.json();
   },
+};
+
+export const allergyAPI = {
+  getAllergies: async () => {
+    const accessToken = tokenService.getAccessToken();
+    if (!accessToken) throw new Error("Not authenticated");
+
+    const response = await fetch(`${API_URL}/allergies/`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!response.ok) throw new Error("Failed to fetch allergies");
+    return await response.json();
+  },
+
+  addAllergy: async (ingredient: string, severity: "mild" | "moderate" | "severe" = "moderate") => {
+    const accessToken = tokenService.getAccessToken();
+    if (!accessToken) throw new Error("Not authenticated");
+
+    const response = await fetch(`${API_URL}/allergies/`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ ingredient, severity }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(JSON.stringify(error));
+    }
+
+    return await response.json();
+  },
+
+  removeAllergy: async (allergyId: number) => {
+    const accessToken = tokenService.getAccessToken();
+    if (!accessToken) throw new Error("Not authenticated");
+
+    const response = await fetch(`${API_URL}/allergies/${allergyId}/`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!response.ok) throw new Error("Failed to remove allergy");
+    return await response.json();
+  },
+};
+
+export const recommendationAPI = {
+  getMealRecommendations: async (limit?: number) => {
+    const accessToken = tokenService.getAccessToken();
+    if (!accessToken) throw new Error("Not authenticated");
+
+    const url = limit
+      ? `${API_URL}/recommendations/?limit=${limit}`
+      : `${API_URL}/recommendations/`;
+
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!response.ok) throw new Error("Failed to fetch recommendations");
+    return await response.json();
+  },
+
+  getWorkoutRecommendations: async (focus?: string) => {
+    const accessToken = tokenService.getAccessToken();
+    if (!accessToken) throw new Error("Not authenticated");
+
+    const url = focus
+      ? `${API_URL}/workout-recommendations/?override_focus=${focus}`
+      : `${API_URL}/workout-recommendations/`;
+
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!response.ok) throw new Error("Failed to fetch workout recommendations");
+    return await response.json();
+  },
+};
+
+// Settings & Profile API
+export const settingsAPI = {
+  updateProfile: async (data: {
+    first_name?: string;
+    phone?: string;
+    age?: number;
+    gender?: string;
+    medical_conditions?: string;
+  }) => {
+    const accessToken = tokenService.getAccessToken();
+    if (!accessToken) throw new Error("Not authenticated");
+
+    const response = await fetch(`${API_URL}/profile/`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || "Failed to update profile");
+    }
+
+    return await response.json();
+  },
+
+  getUserFullData: async () => {
+    const accessToken = tokenService.getAccessToken();
+    if (!accessToken) throw new Error("Not authenticated");
+
+    const response = await fetch(`${API_URL}/profile/`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!response.ok) throw new Error("Failed to fetch user data");
+    const data = await response.json();
+    return data.user;
+  }
 };

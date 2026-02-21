@@ -1,5 +1,5 @@
 import { Outlet, useNavigate, useLocation } from 'react-router';
-import { Brain, Home, Utensils, Dumbbell, TrendingUp, Award, LogOut, Moon, Sun, Menu, X } from 'lucide-react';
+import { Brain, Home, Utensils, Dumbbell, TrendingUp, Award, LogOut, Moon, Sun, Menu, X, Lightbulb, Settings as SettingsIcon } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { useTheme } from '../contexts/theme-context';
 import { useState, useEffect } from 'react';
@@ -42,6 +42,8 @@ export function DashboardLayout() {
     { icon: Dumbbell, label: 'Workout', path: '/dashboard/workout' },
     { icon: TrendingUp, label: 'Progress', path: '/dashboard/progress' },
     { icon: Award, label: 'Achievements', path: '/dashboard/gamification' },
+    { icon: Lightbulb, label: 'Recommendations', path: '/dashboard/recommendations' },
+    { icon: SettingsIcon, label: 'Settings', path: '/dashboard/settings' },
   ];
 
   const isActive = (path: string) => {
@@ -79,16 +81,15 @@ export function DashboardLayout() {
 
       {/* Overlay */}
       {sidebarOpen && (
-        <div 
+        <div
           className="md:hidden fixed inset-0 bg-black/50 z-40"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
       {/* Sidebar */}
-      <aside className={`fixed md:static inset-y-0 left-0 z-50 w-64 bg-sidebar border-r border-sidebar-border flex flex-col transform transition-transform duration-300 ease-in-out ${
-        sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
-      }`}>
+      <aside className={`fixed md:static inset-y-0 left-0 z-50 w-64 bg-sidebar border-r border-sidebar-border flex flex-col transform transition-transform duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+        }`}>
         {/* Logo */}
         <div className="p-6 border-b border-sidebar-border flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -117,11 +118,10 @@ export function DashboardLayout() {
                   navigate(item.path);
                   setSidebarOpen(false);
                 }}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                  active
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${active
                     ? 'bg-sidebar-primary text-sidebar-primary-foreground'
                     : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
-                }`}
+                  }`}
               >
                 <Icon className="w-5 h-5" />
                 <span className="font-medium">{item.label}</span>

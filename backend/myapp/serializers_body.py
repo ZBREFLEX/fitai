@@ -3,7 +3,7 @@ from django.contrib.auth.models import User
 from django.db.models import Q
 from django.utils import timezone
 from datetime import timedelta
-from .models import UserSettings, Goal, BodyMeasurement, UserProfile, CustomFood, MealEntry, WorkoutEntry, DailyStreak
+from .models import UserSettings, Goal, BodyMeasurement, UserProfile, CustomFood, PresetFood, MealEntry, WorkoutEntry, PresetWorkout, DailyStreak, UserAllergy, DailySummary, CustomWorkout
 
 
 class UserSettingsSerializer(serializers.ModelSerializer):
@@ -90,29 +90,7 @@ class BodyMeasurementDetailSerializer(serializers.ModelSerializer):
         return None
     
     def validate(self, data):
-        """Validate that user doesn't already have a measurement for today."""
-        user = self.context['request'].user
-        date_recorded = data.get('date_recorded', timezone.now())
-        
-        # Check if this is an update (instance exists)
-        if self.instance:
-            return data
-        
-        # Check for existing measurement today
-        today_start = date_recorded.replace(hour=0, minute=0, second=0, microsecond=0)
-        today_end = today_start + timedelta(days=1)
-        
-        existing = BodyMeasurement.objects.filter(
-            user=user,
-            date_recorded__gte=today_start,
-            date_recorded__lt=today_end
-        ).exists()
-        
-        if existing:
-            raise serializers.ValidationError(
-                'You already have a measurement for today. Please update the existing measurement instead.'
-            )
-        
+        """Validate input data."""
         return data
 
 
@@ -138,6 +116,8 @@ class BodyMeasurementStatsSerializer(serializers.Serializer):
     latest_measurement_date = serializers.DateTimeField()
     weight_change_total = serializers.FloatField()
     weight_change_weekly = serializers.FloatField()
+    weight_change_30d = serializers.FloatField()
+    weight_change_recent = serializers.FloatField()
     average_weight = serializers.FloatField()
     average_bmi = serializers.FloatField()
     current_streak = serializers.IntegerField()
@@ -151,7 +131,7 @@ class UserProfileWithMeasurementsSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = UserProfile
-        fields = ['phone', 'age', 'gender', 'latest_measurement', 'settings', 'goal']
+        fields = ['phone', 'age', 'gender', 'medical_conditions', 'latest_measurement', 'settings', 'goal']
     
     def get_latest_measurement(self, obj):
         latest = BodyMeasurement.objects.filter(user=obj.user).order_by('-date_recorded').first()
@@ -162,10 +142,41 @@ class UserProfileWithMeasurementsSerializer(serializers.ModelSerializer):
 
 class CustomFoodSerializer(serializers.ModelSerializer):
     """Serializer for custom foods."""
+    food_type = serializers.SerializerMethodField()
+    
     class Meta:
         model = CustomFood
-        fields = ['id', 'food_name', 'calories', 'protein', 'carbs', 'fats', 'serving_size', 'is_favorite', 'created_at']
-        read_only_fields = ['id', 'created_at']
+        fields = ['id', 'food_name', 'calories', 'protein', 'carbs', 'fats', 'serving_size', 'is_favorite', 'food_type', 'created_at']
+        read_only_fields = ['id', 'created_at', 'food_type']
+    
+    def get_food_type(self, obj):
+        return 'custom'
+
+
+class PresetFoodSerializer(serializers.ModelSerializer):
+    """Serializer for preset foods available to all users."""
+    food_type = serializers.SerializerMethodField()
+    is_favorite = serializers.SerializerMethodField()
+    ingredients_list = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = PresetFood
+        fields = [
+            'id', 'food_name', 'calories', 'protein', 'carbs', 'fats', 'serving_size', 
+            'ingredients', 'ingredients_list', 'is_favorite', 'food_type', 
+            'is_diabetic_friendly', 'is_heart_healthy', 'is_gluten_free', 'is_vegan',
+            'created_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'food_type', 'is_favorite', 'ingredients_list']
+    
+    def get_food_type(self, obj):
+        return 'preset'
+    
+    def get_is_favorite(self, obj):
+        return False
+    
+    def get_ingredients_list(self, obj):
+        return obj.get_ingredients_list()
 
 
 class MealEntrySerializer(serializers.ModelSerializer):
@@ -224,16 +235,52 @@ class DailyStreakSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'current_streak', 'longest_streak', 'last_activity_date', 'updated_at']
 
 
-class DailySummarySerializer(serializers.Serializer):
-    """Serializer for daily summary stats."""
-    date = serializers.DateField()
-    total_calories = serializers.IntegerField()
-    total_protein = serializers.FloatField()
-    total_carbs = serializers.FloatField()
-    total_fats = serializers.FloatField()
-    total_calories_burned = serializers.IntegerField()
-    tdee = serializers.IntegerField()
-    net_calories = serializers.IntegerField()
-    meals_count = serializers.IntegerField()
-    workouts_count = serializers.IntegerField()
 
+
+class DailySummarySerializer(serializers.ModelSerializer):
+    """Serializer for daily nutrition summary."""
+    class Meta:
+        model = DailySummary
+        fields = ['id', 'date', 'total_calories', 'total_protein', 'total_carbs', 'total_fats', 
+                  'total_calories_burned', 'net_calories', 'meals_count', 'workouts_count', 'tdee', 
+                  'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class UserAllergySerializer(serializers.ModelSerializer):
+    """Serializer for user allergies."""
+    severity_display = serializers.CharField(source='get_severity_display', read_only=True)
+    
+    class Meta:
+        model = UserAllergy
+        fields = ['id', 'ingredient', 'severity', 'severity_display', 'created_at']
+        read_only_fields = ['id', 'created_at', 'severity_display']
+
+class PresetWorkoutSerializer(serializers.ModelSerializer):
+    """Serializer for preset workouts."""
+    class Meta:
+        model = PresetWorkout
+        fields = [
+            'id', 'name', 'workout_type', 'duration_minutes', 'intensity', 
+            'description', 'benefits', 'target_goal', 'is_low_impact', 
+            'requires_equipment', 'body_part', 'created_at'
+        ]
+
+class CustomWorkoutSerializer(serializers.ModelSerializer):
+    """Serializer for user custom workouts."""
+    estimated_calories = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CustomWorkout
+        fields = [
+            'id', 'name', 'workout_type', 'duration_minutes', 'intensity', 
+            'body_part', 'notes', 'estimated_calories', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_estimated_calories(self, obj):
+        return obj.calculate_calories()
+
+    def create(self, validated_data):
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)

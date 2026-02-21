@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { Plus, Trash2, AlertCircle } from "lucide-react";
+import { Plus, Trash2, AlertCircle, Search } from "lucide-react";
 import { Alert, AlertDescription } from "../components/ui/alert";
 import { tokenService, mealAPI, customFoodAPI, summaryAPI } from "../../services/api";
 
@@ -54,12 +54,14 @@ interface CustomFood {
   fats: number;
   serving_size: string;
   is_favorite: boolean;
+  food_type: 'preset' | 'custom';
 }
 
 export function NutritionPage() {
   const navigate = useNavigate();
   const [meals, setMeals] = useState<Meal[]>([]);
   const [customFoods, setCustomFoods] = useState<CustomFood[]>([]);
+  const [allFoods, setAllFoods] = useState<CustomFood[]>([]);
   const [dailySummary, setDailySummary] = useState<DailySummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -69,6 +71,15 @@ export function NutritionPage() {
   const [selectedFoodId, setSelectedFoodId] = useState("");
   const [mealQuantity, setMealQuantity] = useState("");
   const [showMealDialog, setShowMealDialog] = useState(false);
+  const [foodSearchQuery, setFoodSearchQuery] = useState("");
+  const [showFoodResults, setShowFoodResults] = useState(false);
+  const [overrideNutrition, setOverrideNutrition] = useState(false);
+  const [customNutrition, setCustomNutrition] = useState({
+    calories: "",
+    protein: "",
+    carbs: "",
+    fats: "",
+  });
 
   // Custom food form states
   const [customFoodForm, setCustomFoodForm] = useState({
@@ -93,13 +104,15 @@ export function NutritionPage() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [mealsRes, foodsRes, summaryRes] = await Promise.all([
+      const [mealsRes, foodsRes, allFoodsRes, summaryRes] = await Promise.all([
         mealAPI.getMeals(),
         customFoodAPI.getFoods(),
+        customFoodAPI.getAllFoods(),
         summaryAPI.getDailySummary(),
       ]);
       setMeals(mealsRes);
       setCustomFoods(foodsRes);
+      setAllFoods(allFoodsRes);
       setDailySummary(summaryRes);
       setError("");
     } catch (err) {
@@ -123,14 +136,19 @@ export function NutritionPage() {
 
     try {
       setLoading(true);
-      await customFoodAPI.createFood({
+      setError(""); // Clear previous errors
+
+      const foodData = {
         food_name: customFoodForm.food_name,
         calories: parseInt(customFoodForm.calories),
         protein: parseFloat(customFoodForm.protein),
         carbs: parseFloat(customFoodForm.carbs),
         fats: parseFloat(customFoodForm.fats),
         serving_size: customFoodForm.serving_size + "g",
-      });
+      };
+
+      console.log("Creating food with data:", foodData);
+      await customFoodAPI.createFood(foodData);
 
       setCustomFoodForm({
         food_name: "",
@@ -140,11 +158,12 @@ export function NutritionPage() {
         fats: "",
         serving_size: "100",
       });
-      setError("");
       setShowCustomFoodDialog(false);
       await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create food");
+      const errorMsg = err instanceof Error ? err.message : "Failed to create food";
+      console.error("Food creation error:", errorMsg);
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -158,7 +177,7 @@ export function NutritionPage() {
 
     try {
       setLoading(true);
-      const selectedFood = customFoods.find(
+      const selectedFood = allFoods.find(
         (f) => f.id === parseInt(selectedFoodId)
       );
       if (!selectedFood) {
@@ -166,23 +185,43 @@ export function NutritionPage() {
       }
 
       const qty = parseInt(mealQuantity);
-      const servingGrams = parseInt(selectedFood.serving_size);
+      const servingGrams = parseServingSize(selectedFood.serving_size);
       const multiplier = qty / servingGrams;
 
-      await mealAPI.logMeal({
+      // Calculate default values from food
+      const defaultCalories = Math.round(selectedFood.calories * multiplier);
+      const defaultProtein = Math.round(selectedFood.protein * multiplier * 10) / 10;
+      const defaultCarbs = Math.round(selectedFood.carbs * multiplier * 10) / 10;
+      const defaultFats = Math.round(selectedFood.fats * multiplier * 10) / 10;
+
+      // Use custom nutrition if override is enabled, otherwise use defaults
+      const mealData = {
         meal_type: selectedMealType,
         food_name: selectedFood.food_name,
         quantity: qty,
-        calories: Math.round(selectedFood.calories * multiplier),
-        protein: Math.round(selectedFood.protein * multiplier * 10) / 10,
-        carbs: Math.round(selectedFood.carbs * multiplier * 10) / 10,
-        fats: Math.round(selectedFood.fats * multiplier * 10) / 10,
-      });
+        calories: overrideNutrition && customNutrition.calories
+          ? parseInt(customNutrition.calories)
+          : defaultCalories,
+        protein: overrideNutrition && customNutrition.protein
+          ? parseFloat(customNutrition.protein)
+          : defaultProtein,
+        carbs: overrideNutrition && customNutrition.carbs
+          ? parseFloat(customNutrition.carbs)
+          : defaultCarbs,
+        fats: overrideNutrition && customNutrition.fats
+          ? parseFloat(customNutrition.fats)
+          : defaultFats,
+      };
+
+      await mealAPI.logMeal(mealData);
 
       setSelectedFoodId("");
       setMealQuantity("");
+      setFoodSearchQuery("");
       setError("");
       setShowMealDialog(false);
+      setOverrideNutrition(false);
+      setCustomNutrition({ calories: "", protein: "", carbs: "", fats: "" });
       await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to log meal");
@@ -217,12 +256,55 @@ export function NutritionPage() {
 
   const getSelectedFoodDetails = () => {
     if (!selectedFoodId) return null;
-    return customFoods.find((f) => f.id === parseInt(selectedFoodId));
+    return allFoods.find((f) => f.id === parseInt(selectedFoodId));
   };
 
   const getMealsByType = (mealType: string) => {
     return meals.filter((m) => m.meal_type === mealType);
   };
+
+  // Helper to parse serving size (handles both "100" and "100g" formats)
+  const parseServingSize = (servingSize: string): number => {
+    const parsed = parseInt(servingSize);
+    return isNaN(parsed) ? 100 : parsed;
+  };
+
+  // Fuzzy search for foods (searches through all foods: custom + preset)
+  const fuzzySearchFoods = (query: string) => {
+    if (!query.trim()) return allFoods;
+
+    const queryLower = query.toLowerCase();
+    return allFoods
+      .map((food) => {
+        const foodNameLower = food.food_name.toLowerCase();
+        let score = 0;
+
+        // Exact match
+        if (foodNameLower === queryLower) score = 1000;
+        // Starts with query
+        else if (foodNameLower.startsWith(queryLower)) score = 500;
+        // Contains full query
+        else if (foodNameLower.includes(queryLower)) score = 250;
+        // Fuzzy match - all characters in order
+        else {
+          let searchIdx = 0;
+          for (let i = 0; i < foodNameLower.length && searchIdx < queryLower.length; i++) {
+            if (foodNameLower[i] === queryLower[searchIdx]) {
+              score += 100 / queryLower.length;
+              searchIdx++;
+            }
+          }
+          if (searchIdx !== queryLower.length) score = 0;
+        }
+
+        return { food, score };
+      })
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map((item) => item.food);
+  };
+
+  const filteredFoods = fuzzySearchFoods(foodSearchQuery);
 
   return (
     <div className="p-8">
@@ -350,11 +432,10 @@ export function NutritionPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className={`text-3xl font-bold ${
-                (dailySummary.net_calories || 0) > 0
+              <div className={`text-3xl font-bold ${(dailySummary.net_calories || 0) > 0
                   ? "text-orange-600"
                   : "text-green-600"
-              }`}>
+                }`}>
                 {dailySummary.net_calories}
               </div>
               <p className="text-xs text-muted-foreground mt-1">cal remaining</p>
@@ -397,35 +478,93 @@ export function NutritionPage() {
               </div>
 
               <div>
-                <Label htmlFor="food-select">Select Food *</Label>
-                <Select value={selectedFoodId} onValueChange={setSelectedFoodId}>
-                  <SelectTrigger id="food-select">
-                    <SelectValue placeholder="Choose a food..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {customFoods.length === 0 ? (
-                      <SelectItem value="-" disabled>
-                        No foods available - add one first!
-                      </SelectItem>
-                    ) : (
-                      customFoods.map((food) => (
-                        <SelectItem key={food.id} value={food.id.toString()}>
-                          {food.food_name}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="food-search">Search Food *</Label>
+                <div className="relative">
+                  <Input
+                    id="food-search"
+                    type="text"
+                    placeholder="Search foods (fuzzy match)..."
+                    value={foodSearchQuery}
+                    onChange={(e) => {
+                      setFoodSearchQuery(e.target.value);
+                      setShowFoodResults(true);
+                    }}
+                    onFocus={() => setShowFoodResults(true)}
+                    autoComplete="off"
+                  />
+                  {showFoodResults && foodSearchQuery && filteredFoods.length > 0 && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-md shadow-lg z-10 max-h-64 overflow-y-auto">
+                      {filteredFoods.slice(0, 10).map((food) => (
+                        <button
+                          key={food.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedFoodId(food.id.toString());
+                            setFoodSearchQuery(food.food_name);
+                            setShowFoodResults(false);
+                            setOverrideNutrition(false);
+                            setCustomNutrition({ calories: "", protein: "", carbs: "", fats: "" });
+                          }}
+                          className="w-full text-left px-4 py-3 border-b border-border hover:bg-secondary transition-colors flex justify-between items-start"
+                        >
+                          <div className="flex-1">
+                            <div className="font-medium text-sm flex items-center gap-2">
+                              {food.food_name}
+                              <span className={`text-xs px-2 py-0.5 rounded ${food.food_type === 'preset'
+                                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                                  : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                                }`}>
+                                {food.food_type === 'preset' ? 'Preset' : 'Custom'}
+                              </span>
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-1">
+                              {food.calories} cal | {food.protein.toFixed(0)}p {food.carbs.toFixed(0)}c {food.fats.toFixed(0)}f per {food.serving_size}
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {showFoodResults && foodSearchQuery && filteredFoods.length === 0 && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-md shadow-lg z-10 p-3">
+                      <div className="text-sm text-muted-foreground">No foods found</div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {getSelectedFoodDetails() && (
                 <div className="border-l-4 border-primary p-4 bg-secondary/50 rounded space-y-3">
                   <div>
-                    <div className="font-medium text-sm">
+                    <div className="font-medium text-sm flex items-center gap-2">
                       {getSelectedFoodDetails()?.food_name}
+                      <span className={`text-xs px-2 py-0.5 rounded ${getSelectedFoodDetails()?.food_type === 'preset'
+                          ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                          : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                        }`}>
+                        {getSelectedFoodDetails()?.food_type === 'preset' ? 'Preset' : 'Custom'}
+                      </span>
                     </div>
                     <div className="text-xs text-muted-foreground mt-1">
-                      Per {getSelectedFoodDetails()?.serving_size}:
+                      Per {getSelectedFoodDetails()?.serving_size}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 mt-2 text-xs">
+                      <div className="bg-card p-2 rounded">
+                        <span className="text-muted-foreground">Calories:</span><br />
+                        <span className="font-medium">{getSelectedFoodDetails()?.calories}</span> kcal
+                      </div>
+                      <div className="bg-card p-2 rounded">
+                        <span className="text-muted-foreground">Protein:</span><br />
+                        <span className="font-medium">{getSelectedFoodDetails()?.protein.toFixed(1)}</span>g
+                      </div>
+                      <div className="bg-card p-2 rounded">
+                        <span className="text-muted-foreground">Carbs:</span><br />
+                        <span className="font-medium">{getSelectedFoodDetails()?.carbs.toFixed(1)}</span>g
+                      </div>
+                      <div className="bg-card p-2 rounded">
+                        <span className="text-muted-foreground">Fats:</span><br />
+                        <span className="font-medium">{getSelectedFoodDetails()?.fats.toFixed(1)}</span>g
+                      </div>
                     </div>
                   </div>
 
@@ -442,43 +581,117 @@ export function NutritionPage() {
 
                   {mealQuantity && (
                     <div className="p-3 bg-card rounded border border-border">
-                      <div className="text-sm font-medium mb-2">Macros for this meal:</div>
-                      <div className="text-xs text-muted-foreground space-y-1">
-                        <div>
-                          🔥 Calories:{" "}
-                          {Math.round(
-                            (getSelectedFoodDetails()?.calories || 0) *
+                      <div className="text-sm font-medium mb-3 text-foreground">Total for this meal:</div>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div className="bg-secondary/50 p-2 rounded">
+                          <div className="text-muted-foreground text-xs">Calories</div>
+                          <div className="font-bold text-lg">
+                            {Math.round(
+                              (getSelectedFoodDetails()?.calories || 0) *
                               (parseInt(mealQuantity) /
-                                parseInt(getSelectedFoodDetails()?.serving_size || 100))
-                          )}
-                          kcal
+                                parseServingSize(getSelectedFoodDetails()?.serving_size || "100"))
+                            )}
+                          </div>
+                          <div className="text-xs text-muted-foreground">kcal</div>
+                        </div>
+                        <div className="bg-secondary/50 p-2 rounded">
+                          <div className="text-muted-foreground text-xs">Protein</div>
+                          <div className="font-bold text-lg">
+                            {(
+                              (getSelectedFoodDetails()?.protein || 0) *
+                              (parseInt(mealQuantity) /
+                                parseServingSize(getSelectedFoodDetails()?.serving_size || "100"))
+                            ).toFixed(1)}
+                          </div>
+                          <div className="text-xs text-muted-foreground">g</div>
+                        </div>
+                        <div className="bg-secondary/50 p-2 rounded">
+                          <div className="text-muted-foreground text-xs">Carbs</div>
+                          <div className="font-bold text-lg">
+                            {(
+                              (getSelectedFoodDetails()?.carbs || 0) *
+                              (parseInt(mealQuantity) /
+                                parseServingSize(getSelectedFoodDetails()?.serving_size || "100"))
+                            ).toFixed(1)}
+                          </div>
+                          <div className="text-xs text-muted-foreground">g</div>
+                        </div>
+                        <div className="bg-secondary/50 p-2 rounded">
+                          <div className="text-muted-foreground text-xs">Fats</div>
+                          <div className="font-bold text-lg">
+                            {(
+                              (getSelectedFoodDetails()?.fats || 0) *
+                              (parseInt(mealQuantity) /
+                                parseServingSize(getSelectedFoodDetails()?.serving_size || "100"))
+                            ).toFixed(1)}
+                          </div>
+                          <div className="text-xs text-muted-foreground">g</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="override-nutrition"
+                      checked={overrideNutrition}
+                      onChange={(e) => {
+                        setOverrideNutrition(e.target.checked);
+                        if (!e.target.checked) {
+                          setCustomNutrition({ calories: "", protein: "", carbs: "", fats: "" });
+                        }
+                      }}
+                      className="rounded"
+                    />
+                    <Label htmlFor="override-nutrition" className="cursor-pointer font-medium text-sm">
+                      Override nutrition values (optional)
+                    </Label>
+                  </div>
+
+                  {overrideNutrition && mealQuantity && (
+                    <div className="p-3 bg-secondary/30 rounded border border-border">
+                      <div className="text-sm font-medium mb-3 text-foreground">Custom nutrition for this meal:</div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label htmlFor="custom-cal" className="text-xs">Calories</Label>
+                          <Input
+                            id="custom-cal"
+                            type="number"
+                            placeholder="0"
+                            value={customNutrition.calories}
+                            onChange={(e) => setCustomNutrition({ ...customNutrition, calories: e.target.value })}
+                          />
                         </div>
                         <div>
-                          💪 Protein:{" "}
-                          {(
-                            (getSelectedFoodDetails()?.protein || 0) *
-                            (parseInt(mealQuantity) /
-                              parseInt(getSelectedFoodDetails()?.serving_size || 100))
-                          ).toFixed(1)}
-                          g
+                          <Label htmlFor="custom-protein" className="text-xs">Protein (g)</Label>
+                          <Input
+                            id="custom-protein"
+                            type="number"
+                            placeholder="0"
+                            value={customNutrition.protein}
+                            onChange={(e) => setCustomNutrition({ ...customNutrition, protein: e.target.value })}
+                          />
                         </div>
                         <div>
-                          🥔 Carbs:{" "}
-                          {(
-                            (getSelectedFoodDetails()?.carbs || 0) *
-                            (parseInt(mealQuantity) /
-                              parseInt(getSelectedFoodDetails()?.serving_size || 100))
-                          ).toFixed(1)}
-                          g
+                          <Label htmlFor="custom-carbs" className="text-xs">Carbs (g)</Label>
+                          <Input
+                            id="custom-carbs"
+                            type="number"
+                            placeholder="0"
+                            value={customNutrition.carbs}
+                            onChange={(e) => setCustomNutrition({ ...customNutrition, carbs: e.target.value })}
+                          />
                         </div>
                         <div>
-                          🧈 Fats:{" "}
-                          {(
-                            (getSelectedFoodDetails()?.fats || 0) *
-                            (parseInt(mealQuantity) /
-                              parseInt(getSelectedFoodDetails()?.serving_size || 100))
-                          ).toFixed(1)}
-                          g
+                          <Label htmlFor="custom-fats" className="text-xs">Fats (g)</Label>
+                          <Input
+                            id="custom-fats"
+                            type="number"
+                            placeholder="0"
+                            value={customNutrition.fats}
+                            onChange={(e) => setCustomNutrition({ ...customNutrition, fats: e.target.value })}
+                          />
                         </div>
                       </div>
                     </div>
@@ -731,7 +944,7 @@ export function NutritionPage() {
 export const getDailyCalorieTarget = (): number => {
   const userData = JSON.parse(
     localStorage.getItem("userData") ||
-      '{"age": "25", "height": "175", "weight": "70"}'
+    '{"age": "25", "height": "175", "weight": "70"}'
   );
 
   const heightInMeters = parseFloat(userData.height || "175") / 100;

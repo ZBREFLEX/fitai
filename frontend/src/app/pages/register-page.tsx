@@ -18,6 +18,7 @@ export function RegisterPage() {
     phone: "",
     age: "",
     gender: "",
+    medical_conditions: "",
   });
   const [loading, setLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -128,23 +129,24 @@ export function RegisterPage() {
         phone: formData.phone || undefined,
         age: formData.age ? parseInt(formData.age) : undefined,
         gender: formData.gender || undefined,
+        medical_conditions: formData.medical_conditions || undefined,
       });
       // After registration, go to onboarding for body measurements
       navigate("/onboarding");
     } catch (err) {
       const error = err instanceof Error ? err.message : "Registration failed";
-      
+
       // Parse field-specific errors (e.g., "phone: Phone must be exactly 10 digits | email: Email already exists")
       const fieldErrors: Record<string, string> = {};
       const errorParts = error.split(" | ");
-      
+
       errorParts.forEach((part) => {
         const [field, message] = part.split(": ");
         if (field && message) {
           fieldErrors[field] = message;
         }
       });
-      
+
       if (Object.keys(fieldErrors).length > 0) {
         setFieldErrors(fieldErrors);
       } else {
@@ -219,9 +221,8 @@ export function RegisterPage() {
                   onChange={handleChange}
                   required
                   disabled={loading}
-                  className={`border-border bg-background text-foreground placeholder:text-muted-foreground ${
-                    fieldErrors.name ? "border-destructive" : ""
-                  }`}
+                  className={`border-border bg-background text-foreground placeholder:text-muted-foreground ${fieldErrors.name ? "border-destructive" : ""
+                    }`}
                 />
                 {renderFieldError("name")}
               </div>
@@ -240,9 +241,8 @@ export function RegisterPage() {
                   onChange={handleChange}
                   required
                   disabled={loading}
-                  className={`border-border bg-background text-foreground placeholder:text-muted-foreground ${
-                    fieldErrors.email ? "border-destructive" : ""
-                  }`}
+                  className={`border-border bg-background text-foreground placeholder:text-muted-foreground ${fieldErrors.email ? "border-destructive" : ""
+                    }`}
                 />
                 {renderFieldError("email")}
               </div>
@@ -262,9 +262,8 @@ export function RegisterPage() {
                     onChange={handleChange}
                     required
                     disabled={loading}
-                    className={`border-border bg-background text-foreground placeholder:text-muted-foreground pr-10 ${
-                      fieldErrors.password ? "border-destructive" : ""
-                    }`}
+                    className={`border-border bg-background text-foreground placeholder:text-muted-foreground pr-10 ${fieldErrors.password ? "border-destructive" : ""
+                      }`}
                   />
                   <button
                     type="button"
@@ -297,9 +296,8 @@ export function RegisterPage() {
                     onChange={handleChange}
                     required
                     disabled={loading}
-                    className={`border-border bg-background text-foreground placeholder:text-muted-foreground pr-10 ${
-                      fieldErrors.confirmPassword ? "border-destructive" : ""
-                    }`}
+                    className={`border-border bg-background text-foreground placeholder:text-muted-foreground pr-10 ${fieldErrors.confirmPassword ? "border-destructive" : ""
+                      }`}
                   />
                   <button
                     type="button"
@@ -333,9 +331,8 @@ export function RegisterPage() {
                     onChange={handleChange}
                     onBlur={handleBlur}
                     disabled={loading}
-                    className={`border-border bg-background text-foreground placeholder:text-muted-foreground text-sm ${
-                      fieldErrors.phone ? "border-destructive" : ""
-                    }`}
+                    className={`border-border bg-background text-foreground placeholder:text-muted-foreground text-sm ${fieldErrors.phone ? "border-destructive" : ""
+                      }`}
                   />
                   {renderFieldError("phone")}
                 </div>
@@ -356,9 +353,8 @@ export function RegisterPage() {
                     min="1"
                     max="150"
                     disabled={loading}
-                    className={`border-border bg-background text-foreground placeholder:text-muted-foreground text-sm ${
-                      fieldErrors.age ? "border-destructive" : ""
-                    }`}
+                    className={`border-border bg-background text-foreground placeholder:text-muted-foreground text-sm ${fieldErrors.age ? "border-destructive" : ""
+                      }`}
                   />
                   {renderFieldError("age")}
                 </div>
@@ -380,8 +376,23 @@ export function RegisterPage() {
                   <option value="">Select gender</option>
                   <option value="male">Male</option>
                   <option value="female">Female</option>
-                  <option value="other">Other</option>
                 </select>
+              </div>
+
+              {/* Medical Conditions */}
+              <div className="space-y-2">
+                <Label htmlFor="medical_conditions" className="text-foreground">
+                  Medical Conditions (Optional)
+                </Label>
+                <textarea
+                  id="medical_conditions"
+                  name="medical_conditions"
+                  placeholder="e.g. Diabetes, Hypertension, etc."
+                  value={formData.medical_conditions}
+                  onChange={(e) => setFormData(prev => ({ ...prev, medical_conditions: e.target.value }))}
+                  disabled={loading}
+                  className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground placeholder:text-muted-foreground text-sm min-h-[80px]"
+                />
               </div>
 
               {/* Submit */}

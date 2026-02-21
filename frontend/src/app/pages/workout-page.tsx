@@ -12,9 +12,9 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { Trash2, AlertCircle } from "lucide-react";
+import { Trash2, AlertCircle, Activity, Sparkles, CheckCircle2, Trophy, Clock, Flame, Calendar, Dumbbell, Save, Plus, Bookmark, RefreshCw, Coffee, ClipboardList, Moon } from "lucide-react";
 import { Alert, AlertDescription } from "../components/ui/alert";
-import { tokenService, workoutAPI, summaryAPI } from "../../services/api";
+import { tokenService, workoutAPI, summaryAPI, recommendationAPI, customWorkoutAPI } from "../../services/api";
 
 interface Workout {
   id: number;
@@ -51,93 +51,6 @@ const WORKOUT_TYPES = [
   { value: "other", label: "Other", base_cal: 5 },
 ];
 
-const oldWeeklySchedule = [
-  {
-    day: "Monday",
-    workout: "Upper Body Strength",
-    duration: 45,
-    intensity: "Intermediate",
-    exercises: [
-      { name: "Bench Press", sets: 4, reps: "8-10", rest: "90s" },
-      { name: "Pull-ups", sets: 3, reps: "8-12", rest: "60s" },
-      { name: "Shoulder Press", sets: 3, reps: "10-12", rest: "60s" },
-      { name: "Bicep Curls", sets: 3, reps: "12-15", rest: "45s" },
-    ],
-    completed: true,
-  },
-  {
-    day: "Tuesday",
-    workout: "Cardio & Core",
-    duration: 30,
-    intensity: "Intermediate",
-    exercises: [
-      { name: "Running", sets: 1, reps: "20 min", rest: "-" },
-      { name: "Plank", sets: 3, reps: "60s", rest: "30s" },
-      { name: "Russian Twists", sets: 3, reps: "20", rest: "30s" },
-      { name: "Mountain Climbers", sets: 3, reps: "30s", rest: "30s" },
-    ],
-    completed: true,
-  },
-  {
-    day: "Wednesday",
-    workout: "Lower Body Strength",
-    duration: 50,
-    intensity: "Intermediate",
-    exercises: [
-      { name: "Squats", sets: 4, reps: "8-10", rest: "90s" },
-      { name: "Deadlifts", sets: 4, reps: "6-8", rest: "120s" },
-      { name: "Lunges", sets: 3, reps: "12 each", rest: "60s" },
-      { name: "Calf Raises", sets: 3, reps: "15-20", rest: "45s" },
-    ],
-    completed: true,
-  },
-  {
-    day: "Thursday",
-    workout: "Active Recovery",
-    duration: 30,
-    intensity: "Beginner",
-    exercises: [
-      { name: "Light Yoga", sets: 1, reps: "20 min", rest: "-" },
-      { name: "Stretching", sets: 1, reps: "10 min", rest: "-" },
-    ],
-    completed: true,
-  },
-  {
-    day: "Friday",
-    workout: "Full Body Circuit",
-    duration: 40,
-    intensity: "Intermediate",
-    exercises: [
-      { name: "Burpees", sets: 3, reps: "10", rest: "45s" },
-      { name: "Push-ups", sets: 3, reps: "15", rest: "45s" },
-      { name: "Jump Squats", sets: 3, reps: "12", rest: "45s" },
-      { name: "Plank to Push-up", sets: 3, reps: "10", rest: "45s" },
-    ],
-    completed: true,
-  },
-  {
-    day: "Saturday",
-    workout: "HIIT Training",
-    duration: 35,
-    intensity: "Advanced",
-    exercises: [
-      { name: "Sprint Intervals", sets: 6, reps: "30s", rest: "30s" },
-      { name: "Box Jumps", sets: 4, reps: "12", rest: "45s" },
-      { name: "Battle Ropes", sets: 4, reps: "30s", rest: "30s" },
-      { name: "Kettlebell Swings", sets: 4, reps: "15", rest: "45s" },
-    ],
-    completed: false,
-  },
-  {
-    day: "Sunday",
-    workout: "Rest Day",
-    duration: 0,
-    intensity: "Rest",
-    exercises: [],
-    completed: false,
-  },
-];
-
 export function WorkoutPage() {
   const navigate = useNavigate();
   const [workouts, setWorkouts] = useState<Workout[]>([]);
@@ -150,12 +63,27 @@ export function WorkoutPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // AI Recommendations state
+  const [recommendations, setRecommendations] = useState<any[]>([]);
+  const [isLowImpact, setIsLowImpact] = useState(false);
+  const [focusDay, setFocusDay] = useState("");
+  const [isRestDay, setIsRestDay] = useState(false);
+  const [restMessage, setRestMessage] = useState("");
+  const [skippedParts, setSkippedParts] = useState<string[]>([]);
+
   // Form states
   const [workoutType, setWorkoutType] = useState("cardio");
   const [exerciseName, setExerciseName] = useState("");
   const [duration, setDuration] = useState("");
   const [intensity, setIntensity] = useState("moderate");
   const [estimatedCalories, setEstimatedCalories] = useState(0);
+  const [showCelebration, setShowCelebration] = useState(false);
+  const [completedWorkoutName, setCompletedWorkoutName] = useState("");
+  const [customWorkouts, setCustomWorkouts] = useState<any[]>([]);
+  const [showSaveSuccess, setShowSaveSuccess] = useState(false);
+  const [manualFocus, setManualFocus] = useState<string | null>(null);
+
+  const SPLIT_OPTIONS = ['Chest', 'Back', 'Legs', 'Shoulders', 'Cardio', 'Abs', 'HIIT', 'Arms'];
 
   // Check auth
   useEffect(() => {
@@ -166,15 +94,54 @@ export function WorkoutPage() {
     }
   }, [navigate]);
 
+  const calculateWeekStats = (workoutList: Workout[]) => {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+
+    // Get start of week (Monday)
+    const day = now.getDay();
+    const mondayDiff = day === 0 ? -6 : 1 - day;
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() + mondayDiff);
+
+    const weekWorkouts = workoutList.filter(w => {
+      const workoutDate = new Date(w.date + 'T00:00:00');
+      return workoutDate >= weekStart;
+    });
+
+    const stats = {
+      workouts_this_week: weekWorkouts.length,
+      calories_burned_this_week: Math.round(weekWorkouts.reduce((sum, w) => sum + (w.calories_burned || 0), 0)),
+      total_duration: weekWorkouts.reduce((sum, w) => sum + (w.duration_minutes || 0), 0),
+    };
+
+    setWeekStats(stats);
+  };
+
   const loadData = async () => {
     try {
       setLoading(true);
-      const [workoutsRes, summaryRes] = await Promise.all([
+      const [workoutsRes, summaryRes, recsRes, customRes] = await Promise.all([
         workoutAPI.getWorkouts(),
         summaryAPI.getDailySummary(),
+        recommendationAPI.getWorkoutRecommendations(manualFocus || undefined),
+        customWorkoutAPI.getAll(),
       ]);
       setWorkouts(workoutsRes);
       setDailySummary(summaryRes);
+      setCustomWorkouts(customRes);
+
+      setIsLowImpact(recsRes.low_impact_mode || false);
+      setFocusDay(recsRes.focus_of_the_day || "");
+      setIsRestDay(recsRes.is_rest_day || false);
+      setRestMessage(recsRes.rest_message || "");
+
+      // Intelligent Filtering: Hide skipped body parts
+      const filteredRecs = recsRes.recommendations.filter(
+        (r: any) => !skippedParts.includes(r.body_part)
+      );
+
+      setRecommendations(filteredRecs || []);
       calculateWeekStats(workoutsRes);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data");
@@ -183,25 +150,44 @@ export function WorkoutPage() {
     }
   };
 
-  const calculateWeekStats = (workoutList: Workout[]) => {
-    const today = new Date();
-    const weekStart = new Date(today.setDate(today.getDate() - today.getDay()));
-    weekStart.setHours(0, 0, 0, 0);
+  const getLocalDateString = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
 
-    const weekWorkouts = workoutList.filter(
-      (w) => new Date(w.date) >= weekStart
-    );
+  const handleManualFocusChange = (newFocus: string) => {
+    if (newFocus === "reset") {
+      setManualFocus(null);
+    } else {
+      setManualFocus(newFocus);
+    }
+  };
 
-    const stats = {
-      workouts_this_week: weekWorkouts.length,
-      calories_burned_this_week: weekWorkouts.reduce(
-        (sum, w) => sum + w.calories_burned,
-        0
-      ),
-      total_duration: weekWorkouts.reduce((sum, w) => sum + w.duration_minutes, 0),
-    };
+  useEffect(() => {
+    loadData();
+  }, [manualFocus]);
 
-    setWeekStats(stats);
+  const quickLog = async (rec: any) => {
+    try {
+      setLoading(true);
+      await workoutAPI.logWorkout({
+        workout_type: rec.workout_type,
+        exercise_name: rec.name,
+        duration_minutes: rec.duration_minutes,
+        intensity: rec.intensity,
+        date: getLocalDateString(),
+      });
+      setCompletedWorkoutName(rec.name);
+      setShowCelebration(true);
+      setTimeout(() => setShowCelebration(false), 5000);
+
+      // Refresh data (this will also refresh recommendations via loadData)
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to log workout");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const calculateCalories = (type: string, mins: number, intensityLevel: string) => {
@@ -253,10 +239,15 @@ export function WorkoutPage() {
       setLoading(true);
       await workoutAPI.logWorkout({
         workout_type: workoutType,
-        exercise_name: exerciseName,
+        exercise_name: exerciseName || "Manual Workout",
         duration_minutes: parseInt(duration),
         intensity,
+        date: getLocalDateString(),
       });
+
+      setCompletedWorkoutName(exerciseName || "Manual Workout");
+      setShowCelebration(true);
+      setTimeout(() => setShowCelebration(false), 5000);
 
       // Reset form
       setWorkoutType("cardio");
@@ -267,6 +258,52 @@ export function WorkoutPage() {
       setError("");
 
       // Reload data
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to log workout");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveAsTemplate = async () => {
+    if (!exerciseName || !duration || !workoutType) {
+      setError("Exercise name, duration and type are required to save a template");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await customWorkoutAPI.create({
+        name: exerciseName,
+        workout_type: workoutType,
+        duration_minutes: parseInt(duration),
+        intensity,
+        body_part: focusDay || "Other",
+      });
+      setShowSaveSuccess(true);
+      setTimeout(() => setShowSaveSuccess(false), 3000);
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save template");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const logFromTemplate = async (template: any) => {
+    try {
+      setLoading(true);
+      await workoutAPI.logWorkout({
+        workout_type: template.workout_type,
+        exercise_name: template.name,
+        duration_minutes: template.duration_minutes,
+        intensity: template.intensity,
+        date: getLocalDateString(),
+      });
+      setCompletedWorkoutName(template.name);
+      setShowCelebration(true);
+      setTimeout(() => setShowCelebration(false), 5000);
       await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to log workout");
@@ -292,9 +329,24 @@ export function WorkoutPage() {
   };
 
   return (
-    <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2 text-foreground">Workouts</h1>
+    <div className="p-8 relative">
+      {/* Celebration Popup */}
+      {showCelebration && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 animate-in fade-in zoom-in slide-in-from-top-10 duration-500">
+          <div className="bg-primary text-primary-foreground px-8 py-4 rounded-2xl shadow-2xl flex items-center gap-4 border-2 border-primary-foreground/20">
+            <div className="bg-white/20 p-2 rounded-lg">
+              <Trophy className="w-8 h-8 text-yellow-300" />
+            </div>
+            <div>
+              <div className="text-xl italic uppercase tracking-tighter font-bold">Session Crushed!</div>
+              <p className="text-sm font-medium opacity-90">{completedWorkoutName} logged successfully.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="mb-8 ">
+        <h1 className="text-3xl font-bold mb-2 text-foreground tracking-tight">Workouts</h1>
         <p className="text-muted-foreground">Track your exercises and fitness activities</p>
       </div>
 
@@ -303,6 +355,117 @@ export function WorkoutPage() {
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>{error}</AlertDescription>
         </Alert>
+      )}
+
+      {/* AI Recommendations & Daily Split */}
+      {(recommendations.length > 0 || restMessage) && (
+        <div className="mb-8 p-6 rounded-2xl bg-gradient-to-br from-primary/10 via-background to-secondary/5 border border-primary/20 shadow-sm relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-8 opacity-5">
+            <Activity className="w-32 h-32 text-primary" />
+          </div>
+
+          <div className="relative z-10 flex flex-col gap-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-primary text-primary-foreground rounded-xl shadow-lg shadow-primary/20">
+                  <Sparkles className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-black text-foreground tracking-tight italic uppercase">
+                    AI Coach Insight
+                  </h2>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full uppercase tracking-widest">
+                      {isRestDay ? "Recovery Phase" : `Today's Focus: ${focusDay}`}
+                    </span>
+                    {isLowImpact && (
+                      <span className="text-[10px] bg-blue-500/10 text-blue-500 px-2 py-0.5 rounded-full font-bold uppercase">
+                        Safe Mode
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-col gap-2 min-w-[140px]">
+                <Label className="text-[10px] font-bold uppercase text-muted-foreground ml-1">Change Split</Label>
+                <Select value={manualFocus || focusDay} onValueChange={handleManualFocusChange}>
+                  <SelectTrigger className="h-8 text-[10px] font-bold uppercase bg-background/50 border-2 border-dashed hover:border-primary transition-all">
+                    <div className="flex items-center gap-2">
+                      <RefreshCw className="w-3 h-3" />
+                      <SelectValue placeholder="Select Split" />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SPLIT_OPTIONS.map(opt => (
+                      <SelectItem key={opt} value={opt} className="text-[10px] font-bold uppercase">
+                        {opt}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value="reset" onClick={() => setManualFocus(null)} className="text-[10px] font-bold uppercase border-t mt-1">
+                      Reset to AI Auto
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {restMessage && (
+              <div className={`p-4 rounded-xl border ${isRestDay ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-primary/5 border-primary/10'}`}>
+                <div className="flex items-start gap-4">
+                  <div className="mt-1 p-2 bg-background rounded-lg shadow-sm">
+                    {isRestDay ? <Coffee className="w-5 h-5 text-emerald-500" /> : <Activity className="w-5 h-5 text-primary" />}
+                  </div>
+                  <p className={`text-sm font-semibold tracking-tight ${isRestDay ? 'text-emerald-700 dark:text-emerald-400' : 'text-primary/80'}`}>
+                    {restMessage}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {!isRestDay && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {recommendations.slice(0, 3).map((rec, idx) => (
+                  <Card key={idx} className="bg-background/60 backdrop-blur-md border-border/50 hover:border-primary/40 transition-all duration-500 group relative">
+                    <div className="absolute top-0 right-0 p-3">
+                      <span className="text-[9px] font-black text-primary bg-primary/10 px-2 py-0.5 rounded-full uppercase tracking-tighter">
+                        {rec.body_part}
+                      </span>
+                    </div>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-md font-bold group-hover:text-primary transition-colors leading-tight">
+                        {rec.name}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2 italic">
+                          "{rec.description}"
+                        </p>
+                        <div className="flex items-center justify-between">
+                          <div className="flex flex-wrap items-center gap-3 text-[10px] font-bold text-muted-foreground/70">
+                            <span className="flex items-center gap-1.5"><Clock className="w-3 h-3" /> {rec.duration_minutes}m</span>
+                            <span className="flex items-center gap-1.5 uppercase"><Dumbbell className="w-3 h-3" /> {rec.intensity}</span>
+                            {rec.estimated_calories && (
+                              <span className="flex items-center gap-1.5 text-orange-500"><Flame className="w-3 h-3" /> {rec.estimated_calories} kcal</span>
+                            )}
+                          </div>
+                          <Button
+                            onClick={() => quickLog(rec)}
+                            disabled={loading}
+                            size="sm"
+                            className="h-8 px-4 text-[10px] font-bold uppercase tracking-tighter shadow-md shadow-primary/10"
+                          >
+                            {loading ? "..." : "Log +"}
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Weekly Stats */}
@@ -350,7 +513,6 @@ export function WorkoutPage() {
         </Card>
       </div>
 
-      {/* Today's Summary */}
       {dailySummary && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
           <Card className="bg-card border-border">
@@ -384,18 +546,27 @@ export function WorkoutPage() {
       )}
 
       <Tabs defaultValue="log" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="log">Log Workout</TabsTrigger>
-          <TabsTrigger value="history">Workout History</TabsTrigger>
+        <TabsList className="bg-secondary/50 p-1">
+          <TabsTrigger value="log" className="font-bold">Log Activity</TabsTrigger>
+          <TabsTrigger value="templates" className="font-bold">Templates</TabsTrigger>
+          <TabsTrigger value="history" className="font-bold">History</TabsTrigger>
         </TabsList>
 
         {/* Log Workout Tab */}
         <TabsContent value="log">
-          <Card className="bg-card border-border">
+          <Card className="bg-card border-border mb-6">
             <CardHeader>
-              <CardTitle>Log a Workout</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <Plus className="w-5 h-5 text-primary" /> Log a Workout
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              {showSaveSuccess && (
+                <div className="bg-emerald-500/10 text-emerald-500 p-3 rounded-lg text-sm font-bold flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
+                  <CheckCircle2 className="w-4 h-4" /> Template saved successfully!
+                </div>
+              )}
+
               <div>
                 <Label htmlFor="workout-type">Workout Type *</Label>
                 <Select value={workoutType} onValueChange={handleTypeChange}>
@@ -413,7 +584,7 @@ export function WorkoutPage() {
               </div>
 
               <div>
-                <Label htmlFor="exercise-name">Exercise Name (Optional)</Label>
+                <Label htmlFor="exercise-name">Exercise Name *</Label>
                 <Input
                   id="exercise-name"
                   placeholder="e.g., Morning Run, Bench Press"
@@ -461,13 +632,81 @@ export function WorkoutPage() {
                 </div>
               )}
 
-              <Button
-                onClick={logWorkout}
-                disabled={loading || !duration || !workoutType}
-                className="w-full"
-              >
-                {loading ? "Logging..." : "Log Workout"}
-              </Button>
+              <div className="flex gap-3">
+                <Button
+                  onClick={logWorkout}
+                  disabled={loading || !duration || !workoutType}
+                  className="flex-1 font-bold uppercase tracking-widest italic"
+                >
+                  {loading ? "..." : "Log Workout"}
+                </Button>
+                <Button
+                  onClick={saveAsTemplate}
+                  disabled={loading || !exerciseName || !duration}
+                  variant="outline"
+                  className="font-bold uppercase tracking-widest italic border-2"
+                >
+                  <Save className="w-4 h-4" />
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Saved Templates Tab */}
+        <TabsContent value="templates">
+          <Card className="bg-card border-border">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Bookmark className="w-5 h-5 text-primary" /> Saved Templates
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {customWorkouts.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="bg-secondary/30 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <ClipboardList className="w-8 h-8 text-muted-foreground opacity-50" />
+                  </div>
+                  <p className="text-muted-foreground font-medium">No templates saved yet. Create one when logging a workout!</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {customWorkouts.map((template) => (
+                    <div key={template.id} className="p-4 rounded-xl bg-secondary/20 border border-border/50 hover:border-primary/40 transition-all group">
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="font-bold text-foreground group-hover:text-primary transition-colors">{template.name}</div>
+                        <button onClick={() => customWorkoutAPI.delete(template.id).then(loadData)} className="p-1 hover:text-destructive transition-colors opacity-0 group-hover:opacity-100">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-2 mb-4">
+                        <span className="text-[9px] font-black bg-primary/10 text-primary px-2 py-0.5 rounded-full uppercase italic">
+                          {template.workout_type}
+                        </span>
+                        <span className="text-[9px] font-bold text-muted-foreground flex items-center gap-1">
+                          <Clock className="w-3 h-3" /> {template.duration_minutes}m
+                        </span>
+                        <span className="text-[9px] font-bold text-muted-foreground flex items-center gap-1 uppercase">
+                          <Dumbbell className="w-3 h-3" /> {template.intensity}
+                        </span>
+                        {template.estimated_calories && (
+                          <span className="text-[9px] font-bold text-orange-500 flex items-center gap-1">
+                            <Flame className="w-3 h-3" /> {template.estimated_calories} kcal
+                          </span>
+                        )}
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="w-full text-[10px] font-bold uppercase tracking-widest italic h-7 bg-background shadow-sm hover:bg-primary hover:text-primary-foreground"
+                        onClick={() => logFromTemplate(template)}
+                      >
+                        Launch
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -495,13 +734,17 @@ export function WorkoutPage() {
                         </div>
                         <div className="text-sm text-muted-foreground mt-1">
                           <div className="flex gap-4">
-                            <span>
-                              📅 {new Date(workout.date).toLocaleDateString()}
+                            <span className="flex items-center gap-1">
+                              <Calendar className="w-3 h-3" /> {new Date(workout.date).toLocaleDateString()}
                             </span>
-                            <span>⏱️ {workout.duration_minutes} min</span>
-                            <span className="capitalize">💪 {workout.intensity}</span>
-                            <span className="text-orange-500 font-medium">
-                              🔥 {workout.calories_burned} kcal
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-3 h-3" /> {workout.duration_minutes} min
+                            </span>
+                            <span className="capitalize flex items-center gap-1">
+                              <Dumbbell className="w-3 h-3" /> {workout.intensity}
+                            </span>
+                            <span className="text-orange-500 font-medium flex items-center gap-1">
+                              <Flame className="w-3 h-3" /> {workout.calories_burned} kcal
                             </span>
                           </div>
                         </div>

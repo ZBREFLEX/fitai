@@ -8,7 +8,7 @@ urlpatterns = [
     path('register/', views.register_user, name='register'),
     path('login/', views.login_user, name='login'),
     path('logout/', views.logout_user, name='logout'),
-    path('profile/', views.get_user_profile, name='profile'),
+    path('profile/', views.manage_user_profile, name='profile'),
     path('token/refresh/', views.refresh_token, name='token_refresh'),
     
     # User settings
@@ -27,6 +27,7 @@ urlpatterns = [
     # Custom foods
     path('custom-foods/', views_body.custom_foods, name='custom_foods'),
     path('custom-foods/<int:pk>/', views_body.custom_food_detail, name='custom_food_detail'),
+    path('all-foods/', views_body.all_foods, name='all_foods'),
     
     # Meal entries
     path('meals/', views_body.meal_entries, name='meal_entries'),
@@ -39,4 +40,16 @@ urlpatterns = [
     # Daily summary and streak
     path('daily-summary/', views_body.daily_summary, name='daily_summary'),
     path('streak/', views_body.user_streak, name='user_streak'),
+    
+    # Allergies
+    path('allergies/', views_body.user_allergies, name='user_allergies'),
+    path('allergies/<int:pk>/', views_body.allergy_detail, name='allergy_detail'),
+    
+    # Recommendations
+    path('recommendations/', views_body.meal_recommendations, name='meal_recommendations'),
+    path('workout-recommendations/', views_body.workout_recommendations, name='workout_recommendations'),
+    
+    # Custom Workouts Templates
+    path('custom-workouts/', views_body.custom_workouts, name='custom_workouts'),
+    path('custom-workouts/<int:pk>/', views_body.custom_workout_detail, name='custom_workout_detail'),
 ]

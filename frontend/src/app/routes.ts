@@ -10,6 +10,8 @@ import { WorkoutPage } from "./pages/workout-page";
 import { ProgressPage } from "./pages/progress-page";
 import { GamificationPage } from "./pages/gamification-page";
 import { ContactPage } from "./pages/contact-page";
+import { RecommendationsPage } from "./pages/recommendations-page";
+import { SettingsPage } from "./pages/settings-page";
 
 export const router = createBrowserRouter([
   {
@@ -55,6 +57,14 @@ export const router = createBrowserRouter([
       {
         path: "gamification",
         Component: GamificationPage,
+      },
+      {
+        path: "recommendations",
+        Component: RecommendationsPage,
+      },
+      {
+        path: "settings",
+        Component: SettingsPage,
       },
     ],
   },

@@ -7,9 +7,24 @@ from .models import UserProfile
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
+    latest_measurement = serializers.SerializerMethodField()
+
     class Meta:
         model = UserProfile
-        fields = ['phone', 'age', 'gender']
+        fields = ['phone', 'age', 'gender', 'medical_conditions', 'latest_measurement']
+
+    def get_latest_measurement(self, obj):
+        from .models import BodyMeasurement
+        latest = BodyMeasurement.objects.filter(user=obj.user).order_by('-date_recorded').first()
+        if latest:
+            return {
+                'weight': latest.weight,
+                'height': latest.height,
+                'bmi': latest.bmi,
+                'bmi_status': latest.get_bmi_category(),
+                'activity_level': latest.activity_level
+            }
+        return None
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
@@ -18,11 +33,12 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     phone = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     age = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=150)
     gender = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    medical_conditions = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     name = serializers.CharField(required=True, max_length=150)
 
     class Meta:
         model = User
-        fields = ['email', 'password', 'confirm_password', 'name', 'phone', 'age', 'gender']
+        fields = ['email', 'password', 'confirm_password', 'name', 'phone', 'age', 'gender', 'medical_conditions']
 
     def validate_email(self, value):
         """Validate email is unique."""
@@ -82,6 +98,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         phone = validated_data.pop('phone', None)
         age = validated_data.pop('age', None)
         gender = validated_data.pop('gender', None)
+        medical_conditions = validated_data.pop('medical_conditions', None)
         name = validated_data.pop('name', '')
         validated_data.pop('confirm_password', None)
 
@@ -101,7 +118,8 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             user=user,
             phone=phone,
             age=age,
-            gender=gender
+            gender=gender,
+            medical_conditions=medical_conditions
         )
 
         return user

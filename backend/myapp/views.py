@@ -132,17 +132,36 @@ def logout_user(request):
         }, status=status.HTTP_400_BAD_REQUEST)
 
 
-@api_view(['GET'])
+@api_view(['GET', 'PUT'])
 @authentication_classes([JWTAuthentication])
 @permission_classes([IsAuthenticated])
-def get_user_profile(request):
+def manage_user_profile(request):
     """
-    Get current user's profile.
+    Get or update current user's profile.
     Requires JWT authentication.
     """
-    return Response({
-        'user': UserSerializer(request.user).data
-    }, status=status.HTTP_200_OK)
+    if request.method == 'GET':
+        return Response({
+            'user': UserSerializer(request.user).data
+        }, status=status.HTTP_200_OK)
+    
+    elif request.method == 'PUT':
+        user = request.user
+        # Update first_name if provided
+        if 'first_name' in request.data:
+            user.first_name = request.data['first_name']
+            user.save()
+            
+        # Update profile data
+        from .serializers import UserProfileSerializer
+        serializer = UserProfileSerializer(user.profile, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({
+                'message': 'Profile updated successfully',
+                'user': UserSerializer(user).data
+            }, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['POST'])

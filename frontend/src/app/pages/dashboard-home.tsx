@@ -4,12 +4,10 @@ import {
   CardHeader,
   CardTitle,
 } from "../components/ui/card";
-import { Activity, TrendingUp, Target, Flame } from "lucide-react";
+import { Activity, TrendingUp, Target, Flame, Lightbulb, Scale, Ruler, Settings, RefreshCw } from "lucide-react";
 import {
   LineChart,
   Line,
-  AreaChart,
-  Area,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -18,8 +16,11 @@ import {
 } from "recharts";
 import { useTheme } from "../contexts/theme-context";
 import { useState, useEffect } from "react";
-import { summaryAPI, tokenService } from "../../services/api";
+import { summaryAPI, tokenService, recommendationAPI, bodyMeasurementAPI, settingsAPI } from "../../services/api";
 import { useNavigate } from "react-router";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
 
 interface DailySummary {
   date: string;
@@ -40,6 +41,18 @@ interface Streak {
   last_activity_date: string;
 }
 
+interface RecommendedFood {
+  id: number;
+  food_name: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fats: number;
+  serving_size: string;
+  ingredients: string;
+  food_type: string;
+}
+
 export function DashboardHome() {
   const { theme } = useTheme();
   const navigate = useNavigate();
@@ -48,41 +61,15 @@ export function DashboardHome() {
   const [weeklyData, setWeeklyData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [recommendedFoods, setRecommendedFoods] = useState<RecommendedFood[]>([]);
+  const [recommendedWorkouts, setRecommendedWorkouts] = useState<any[]>([]);
+  const [recommendationsLoading, setRecommendationsLoading] = useState(false);
 
-  // Get user data from localStorage
-  const userData = JSON.parse(
-    localStorage.getItem("userData") ||
-      '{"age": "25", "height": "175", "weight": "70"}',
-  );
-
-  // Calculate BMI
-  const heightInMeters = parseFloat(userData.height || "175") / 100;
-  const weight = parseFloat(userData.weight || "70");
-  const bmi = (weight / (heightInMeters * heightInMeters)).toFixed(1);
-
-  // Estimate daily calories (simplified formula)
-  const age = parseInt(userData.age || "25");
-  const bmr =
-    userData.gender === "female"
-      ? 655 +
-        9.6 * weight +
-        1.8 * parseFloat(userData.height || "175") -
-        4.7 * age
-      : 66 +
-        13.7 * weight +
-        5 * parseFloat(userData.height || "175") -
-        6.8 * age;
-
-  const activityMultiplier =
-    {
-      sedentary: 1.2,
-      light: 1.375,
-      moderate: 1.55,
-      very: 1.725,
-      extreme: 1.9,
-    }[userData.activityLevel || "moderate"] || 1.55;
-
-  const dailyCalorieTarget = Math.round(bmr * activityMultiplier);
+  // Quick update states
+  const [quickWeight, setQuickWeight] = useState("");
+  const [quickHeight, setQuickHeight] = useState("");
+  const [quickLoading, setQuickLoading] = useState(false);
+  const [profileData, setProfileData] = useState<any>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -90,6 +77,15 @@ export function DashboardHome() {
         if (!tokenService.isTokenValid()) {
           navigate("/login");
           return;
+        }
+
+        // Fetch full profile data
+        const profile = await settingsAPI.getUserFullData();
+        setProfileData(profile);
+
+        if (profile.profile?.latest_measurement) {
+          setQuickWeight(profile.profile.latest_measurement.weight.toString());
+          setQuickHeight(profile.profile.latest_measurement.height.toString());
         }
 
         // Fetch today's summary and streak
@@ -101,25 +97,42 @@ export function DashboardHome() {
         setDailySummary(todaysummary);
         setStreak(streakData);
 
+        // Fetch recommendations
+        try {
+          setRecommendationsLoading(true);
+          const [foodRecRes, workoutRecRes] = await Promise.all([
+            recommendationAPI.getMealRecommendations(4),
+            recommendationAPI.getWorkoutRecommendations(),
+          ]);
+          setRecommendedFoods(foodRecRes?.recommendations || []);
+          setRecommendedWorkouts(workoutRecRes?.recommendations?.slice(0, 3) || []);
+        } catch (err) {
+          console.error("Failed to load recommendations:", err);
+        } finally {
+          setRecommendationsLoading(false);
+        }
+
         // Fetch last 7 days of data for weekly chart
         const weekData = [];
+        const calorieTarget = todaysummary?.tdee || 2000;
+
         for (let i = 6; i >= 0; i--) {
           const date = new Date();
           date.setDate(date.getDate() - i);
-          const dateStr = date.toISOString().split("T")[0];
+          const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 
           try {
             const summary = await summaryAPI.getDailySummary(dateStr);
             weekData.push({
               day: date.toLocaleDateString("en-US", { weekday: "short" }),
               calories: summary.total_calories,
-              target: dailyCalorieTarget,
+              target: calorieTarget,
             });
           } catch (e) {
             weekData.push({
               day: date.toLocaleDateString("en-US", { weekday: "short" }),
               calories: 0,
-              target: dailyCalorieTarget,
+              target: calorieTarget,
             });
           }
         }
@@ -131,9 +144,29 @@ export function DashboardHome() {
         setLoading(false);
       }
     };
-
     loadData();
   }, [navigate]);
+
+  const handleQuickUpdate = async () => {
+    try {
+      setQuickLoading(true);
+      if (!profileData) return;
+
+      await bodyMeasurementAPI.save({
+        weight: parseFloat(quickWeight),
+        height: parseFloat(quickHeight),
+        age: profileData.profile?.age || 25,
+        gender: profileData.profile?.gender || "male",
+        activityLevel: profileData.profile?.latest_measurement?.activity_level || "moderate",
+      });
+
+      window.location.reload();
+    } catch (err) {
+      console.error("Failed to update measurements:", err);
+    } finally {
+      setQuickLoading(false);
+    }
+  };
 
   // Theme colors
   const colors = {
@@ -146,371 +179,302 @@ export function DashboardHome() {
     tooltipText: theme === "dark" ? "#ffffff" : "#000000",
   };
 
+  const bmi = profileData?.profile?.latest_measurement?.bmi || "N/A";
+  const bmiStatus = profileData?.profile?.latest_measurement?.bmi_status || "Update metrics";
+
   return (
     <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2 text-foreground">
-          Welcome back, John!
-        </h1>
-        <p className="text-muted-foreground">
-          Here's your fitness overview for today
-        </p>
+      <div className="mb-8 font-poppins">
+        <h1 className="text-3xl font-bold mb-2 text-foreground tracking-tight">Dashboard Overview</h1>
+        <p className="text-muted-foreground">Welcome back, {profileData?.user?.username || "Athlete"}</p>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        {/* Quick Update */}
         <Card className="bg-card border-border">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Daily Calories
-            </CardTitle>
-            <Flame className="w-4 h-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">Quick Metrics</CardTitle>
+            <Settings className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-foreground">
-              {dailyCalorieTarget}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">kcal target</p>
-            <div className="mt-4 h-1 bg-secondary rounded-full overflow-hidden">
-              <div
-                className="h-full bg-primary transition-all duration-500"
-                style={{
-                  width: `${Math.min(
-                    (((dailySummary?.total_calories || 0) +
-                      (dailySummary?.total_calories_burned || 0)) /
-                      dailyCalorieTarget) *
-                      100,
-                    100
-                  )}%`,
-                }}
+            <div className="flex gap-2">
+              <Input
+                type="number"
+                placeholder="Weight (kg)"
+                value={quickWeight}
+                onChange={(e) => setQuickWeight(e.target.value)}
+                className="h-8 text-xs font-semibold"
               />
+              <Input
+                type="number"
+                placeholder="Height (cm)"
+                value={quickHeight}
+                onChange={(e) => setQuickHeight(e.target.value)}
+                className="h-8 text-xs font-semibold"
+              />
+              <Button size="sm" className="h-8 px-3" onClick={handleQuickUpdate} disabled={quickLoading}>
+                {quickLoading ? "..." : <RefreshCw className="w-3 h-3" />}
+              </Button>
             </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              {(dailySummary?.total_calories || 0) +
-                (dailySummary?.total_calories_burned || 0)} /{" "}
-              {dailyCalorieTarget} consumed
-            </p>
           </CardContent>
         </Card>
 
+        {/* BMI Status */}
         <Card className="bg-card border-border">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Body Mass Index
-            </CardTitle>
-            <Activity className="w-4 h-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">BMI Status</CardTitle>
+            <Scale className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-foreground">{bmi}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {parseFloat(bmi) < 18.5
-                ? "Underweight"
-                : parseFloat(bmi) < 25
-                  ? "Normal"
-                  : parseFloat(bmi) < 30
-                    ? "Overweight"
-                    : "Obese"}
-            </p>
+            <div className="text-2xl font-bold">{bmi}</div>
+            <p className="text-xs text-muted-foreground mt-1">{bmiStatus}</p>
             <div className="mt-4 flex gap-1">
-              <div className="flex-1 h-1 bg-secondary rounded-full" />
-              <div className="flex-1 h-1 bg-primary rounded-full" />
-              <div className="flex-1 h-1 bg-secondary rounded-full" />
-              <div className="flex-1 h-1 bg-secondary rounded-full" />
+              <div className={`flex-1 h-1 rounded-full ${parseFloat(bmi) < 18.5 ? "bg-primary" : "bg-secondary"}`} />
+              <div className={`flex-1 h-1 rounded-full ${parseFloat(bmi) >= 18.5 && parseFloat(bmi) < 25 ? "bg-primary" : "bg-secondary"}`} />
+              <div className={`flex-1 h-1 rounded-full ${parseFloat(bmi) >= 25 && parseFloat(bmi) < 30 ? "bg-primary" : "bg-secondary"}`} />
+              <div className={`flex-1 h-1 rounded-full ${parseFloat(bmi) >= 30 ? "bg-primary" : "bg-secondary"}`} />
             </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              Target: 18.5 - 24.9
-            </p>
           </CardContent>
         </Card>
 
+        {/* Daily Progress */}
         <Card className="bg-card border-border">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Weekly Workouts
-            </CardTitle>
-            <TrendingUp className="w-4 h-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">Daily Progress</CardTitle>
+            <Flame className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-foreground">
-              {dailySummary?.workouts_count || 0}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              today's sessions
-            </p>
-            <div className="mt-4 h-1 bg-secondary rounded-full overflow-hidden">
+            <div className="text-2xl font-bold">{dailySummary?.total_calories || 0} kcal</div>
+            <p className="text-xs text-muted-foreground mt-1">Goal: {dailySummary?.tdee || 2000} kcal</p>
+            <div className="h-1.5 bg-secondary rounded-full overflow-hidden mt-4">
               <div
                 className="h-full bg-primary"
-                style={{ width: `${((dailySummary?.workouts_count || 0) * 14) % 100}%` }}
+                style={{ width: `${Math.min(((dailySummary?.total_calories || 0) / (dailySummary?.tdee || 2000)) * 100, 100)}%` }}
               />
             </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              Keep up the momentum!
-            </p>
           </CardContent>
         </Card>
 
+        {/* Streak */}
         <Card className="bg-card border-border">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Current Streak
-            </CardTitle>
-            <Target className="w-4 h-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">Active Streak</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-foreground">
-              {streak?.current_streak || 0}
+            <div className="text-2xl font-bold">{streak?.current_streak || 0} Days</div>
+            <p className="text-xs text-muted-foreground mt-1">Keep it up! Best: {streak?.longest_streak || 0}</p>
+            <div className="mt-4 flex items-center gap-2">
+              <div className="text-xl">🔥</div>
+              <div className="text-[10px] font-bold text-primary uppercase bg-primary/10 px-2 py-0.5 rounded-full">
+                Momentum
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground mt-1">days active</p>
-            <div className="mt-4 flex gap-1">
-              {[...Array(7)].map((_, i) => (
-                <div
-                  key={i}
-                  className={`flex-1 h-8 rounded ${
-                    i < (streak?.current_streak || 0) ? "bg-primary" : "bg-secondary"
-                  }`}
-                />
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8">
+        {/* Weekly Chart (Span 8) */}
+        <div className="lg:col-span-8 flex flex-col gap-6">
+          <Card className="bg-card border-border shadow-sm flex-1">
+            <CardHeader>
+              <CardTitle className="text-foreground">Weekly Calorie Intake</CardTitle>
+              <p className="text-sm text-muted-foreground">Daily consumption vs target</p>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={260}>
+                <LineChart data={weeklyData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} vertical={false} />
+                  <XAxis dataKey="day" stroke={colors.text} axisLine={false} tickLine={false} />
+                  <YAxis stroke={colors.text} axisLine={false} tickLine={false} tickFormatter={(val) => `${val / 1000}k`} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: colors.background,
+                      border: `1px solid ${colors.border}`,
+                      borderRadius: "8px",
+                    }}
+                  />
+                  <Line type="monotone" dataKey="calories" stroke={colors.primary} strokeWidth={3} dot={{ fill: colors.primary, r: 4 }} />
+                  <Line type="monotone" dataKey="target" stroke={colors.secondary} strokeWidth={2} strokeDasharray="5 5" dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          {/* AI Workout Picks (New Section) */}
+          <Card className="bg-card border-primary/20 shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <div className="flex items-center gap-2">
+                <Activity className="w-5 h-5 text-primary" />
+                <CardTitle className="text-lg">AI Workout Picks</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {recommendedWorkouts.map((workout, idx) => (
+                  <div
+                    key={idx}
+                    className="p-4 rounded-xl bg-primary/5 border border-primary/10 hover:border-primary/30 transition-all cursor-pointer group"
+                    onClick={() => navigate('/dashboard/workout')}
+                  >
+                    <div className="font-bold text-sm mb-1 group-hover:text-primary transition-colors">{workout.name}</div>
+                    <div className="flex items-center gap-2 text-[10px] text-muted-foreground font-bold uppercase">
+                      <span>⏱️ {workout.duration_minutes}m</span>
+                      <span>💪 {workout.intensity}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Right Sidebar: Energy Balance & Macro Distribution (Span 4) */}
+        <div className="lg:col-span-4 flex flex-col gap-6">
+          <Card className="bg-card border-border shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Today's Balance</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-center py-4 bg-primary/5 rounded-xl border border-primary/10 mb-4">
+                <div className="text-4xl font-bold text-foreground">{dailySummary?.net_calories || 0}</div>
+                <div className="text-xs text-muted-foreground font-bold uppercase tracking-widest">Net kcal</div>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <div className="flex justify-between text-xs font-bold uppercase mb-1">
+                    <span className="text-muted-foreground">Burned</span>
+                    <span className="text-orange-500">{dailySummary?.total_calories_burned || 0} kcal</span>
+                  </div>
+                  <div className="h-1.5 bg-secondary/30 rounded-full overflow-hidden">
+                    <div className="h-full bg-orange-500" style={{ width: `${Math.min(((dailySummary?.total_calories_burned || 0) / 500) * 100, 100)}%` }} />
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card border-border shadow-sm flex-1">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Macros</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {[
+                { label: "P", current: dailySummary?.total_protein || 0, goal: 150, color: "bg-blue-500" },
+                { label: "C", current: dailySummary?.total_carbs || 0, goal: 250, color: "bg-green-500" },
+                { label: "F", current: dailySummary?.total_fats || 0, goal: 80, color: "bg-orange-500" },
+              ].map((macro) => (
+                <div key={macro.label} className="space-y-1">
+                  <div className="flex justify-between text-[10px] font-bold">
+                    <span>{macro.label}</span>
+                    <span>{macro.current}g / {macro.goal}g</span>
+                  </div>
+                  <div className="h-1.5 bg-secondary/30 rounded-full overflow-hidden">
+                    <div className={`h-full ${macro.color}`} style={{ width: `${Math.min((macro.current / macro.goal) * 100, 100)}%` }} />
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Food Recommendations (Wide Card) */}
+      <Card className="bg-card border-border shadow-sm mb-8">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Lightbulb className="w-5 h-5 text-yellow-500" />
+              <CardTitle className="text-lg">Top AI Meals</CardTitle>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard/recommendations")}>
+              View More
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {recommendedFoods.map((food) => (
+              <div
+                key={food.id}
+                className="p-4 rounded-xl bg-secondary/10 hover:bg-secondary/20 transition-all cursor-pointer border border-transparent hover:border-border group"
+                onClick={() => navigate("/dashboard/nutrition")}
+              >
+                <div className="font-bold text-sm mb-1 group-hover:text-primary transition-colors">{food.food_name}</div>
+                <div className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded inline-block mb-2">
+                  {food.calories} kcal
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Bottom Grid for Macros & Quick Links */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card className="bg-card border-border shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-lg text-foreground">Macro Distribution</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-5">
+              {[
+                { label: "Protein", current: dailySummary?.total_protein || 0, goal: 150, color: "bg-blue-500" },
+                { label: "Carbs", current: dailySummary?.total_carbs || 0, goal: 250, color: "bg-green-500" },
+                { label: "Fats", current: dailySummary?.total_fats || 0, goal: 80, color: "bg-orange-500" },
+              ].map((macro) => (
+                <div key={macro.label}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-sm font-medium text-muted-foreground">{macro.label}</span>
+                    <span className="text-sm font-bold text-foreground">{macro.current}g / {macro.goal}g</span>
+                  </div>
+                  <div className="h-2 bg-secondary/30 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full ${macro.color}`}
+                      style={{ width: `${Math.min((macro.current / macro.goal) * 100, 100)}%` }}
+                    />
+                  </div>
+                </div>
               ))}
             </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              Personal best: {streak?.longest_streak || 0} days
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        <Card className="bg-card border-border">
-          <CardHeader>
-            <CardTitle className="text-foreground">
-              Weekly Calorie Intake
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Daily consumption vs target
-            </p>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={weeklyData.length > 0 ? weeklyData : []}>
-                <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
-                <XAxis dataKey="day" stroke={colors.text} />
-                <YAxis stroke={colors.text} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: colors.background,
-                    border: `1px solid ${colors.border}`,
-                    borderRadius: "8px",
-                    color: colors.tooltipText,
-                  }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="calories"
-                  stroke={colors.primary}
-                  strokeWidth={2}
-                  dot={{ fill: colors.primary }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="target"
-                  stroke={colors.secondary}
-                  strokeWidth={2}
-                  strokeDasharray="5 5"
-                  dot={{ fill: colors.secondary }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
           </CardContent>
         </Card>
 
-        <Card className="bg-card border-border">
+        <Card className="bg-card border-border shadow-sm">
           <CardHeader>
-            <CardTitle className="text-foreground">
-              Today's Macros Burned
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Calories burned through workouts
-            </p>
+            <CardTitle className="text-lg text-foreground">Quick Actions</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-muted-foreground text-sm">Total Burned</span>
-                  <span className="font-semibold text-foreground">
-                    {dailySummary?.total_calories_burned || 0} kcal
-                  </span>
-                </div>
-                <div className="h-2 bg-secondary rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-orange-500"
-                    style={{
-                      width: `${Math.min(
-                        ((dailySummary?.total_calories_burned || 0) /
-                          dailyCalorieTarget) *
-                          100,
-                        100
-                      )}%`,
-                    }}
-                  />
-                </div>
-              </div>
-              <div className="text-center py-4 bg-secondary/50 rounded">
-                <div className="text-2xl font-bold text-foreground">
-                  {dailySummary?.net_calories || 0}
-                </div>
-                <div className="text-xs text-muted-foreground">Net Calories</div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  ({dailySummary?.total_calories || 0} consumed -{" "}
-                  {dailySummary?.total_calories_burned || 0} burned)
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="bg-card border-border">
-          <CardHeader>
-            <CardTitle className="text-lg text-foreground">
-              Today's Activity
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Meals Logged</span>
-                <span className="font-semibold text-foreground">
-                  {dailySummary?.meals_count || 0}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Workouts Done</span>
-                <span className="font-semibold text-foreground">
-                  {dailySummary?.workouts_count || 0}
-                </span>
-              </div>
-              <div className="border-t border-border pt-3" />
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Streak</span>
-                <span className="font-semibold text-foreground text-lg">
-                  🔥 {streak?.current_streak || 0}
-                </span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card border-border">
-          <CardHeader>
-            <CardTitle className="text-lg text-foreground">
-              Macro Breakdown
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-muted-foreground">Protein</span>
-                  <span className="font-semibold text-foreground">
-                    {dailySummary?.total_protein || 0}g
-                  </span>
-                </div>
-                <div className="h-2 bg-secondary rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-primary"
-                    style={{
-                      width: `${Math.min(
-                        ((dailySummary?.total_protein || 0) / 150) * 100,
-                        100
-                      )}%`,
-                    }}
-                  />
-                </div>
-              </div>
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-muted-foreground">Carbs</span>
-                  <span className="font-semibold text-foreground">
-                    {dailySummary?.total_carbs || 0}g
-                  </span>
-                </div>
-                <div className="h-2 bg-secondary rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-primary"
-                    style={{
-                      width: `${Math.min(
-                        ((dailySummary?.total_carbs || 0) / 300) * 100,
-                        100
-                      )}%`,
-                    }}
-                  />
-                </div>
-              </div>
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-muted-foreground">Fats</span>
-                  <span className="font-semibold text-foreground">
-                    {dailySummary?.total_fats || 0}g
-                  </span>
-                </div>
-                <div className="h-2 bg-secondary rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-primary"
-                    style={{
-                      width: `${Math.min(
-                        ((dailySummary?.total_fats || 0) / 80) * 100,
-                        100
-                      )}%`,
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card border-border">
-          <CardHeader>
-            <CardTitle className="text-lg text-foreground">
-              Quick Links
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              <button
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <Button
+                variant="secondary"
+                className="flex flex-col h-auto py-4 gap-2 border border-transparent hover:border-primary/20"
                 onClick={() => navigate("/dashboard/nutrition")}
-                className="w-full text-left px-3 py-2 rounded hover:bg-secondary/50 transition-colors"
               >
-                <div className="font-semibold text-foreground">📊 Log Meal</div>
-                <div className="text-xs text-muted-foreground">
-                  Track your nutrition
-                </div>
-              </button>
-              <button
+                <div className="text-xl">📊</div>
+                <div className="font-bold">Log Meal</div>
+              </Button>
+              <Button
+                variant="secondary"
+                className="flex flex-col h-auto py-4 gap-2 border border-transparent hover:border-primary/20"
                 onClick={() => navigate("/dashboard/workout")}
-                className="w-full text-left px-3 py-2 rounded hover:bg-secondary/50 transition-colors"
               >
-                <div className="font-semibold text-foreground">💪 Log Workout</div>
-                <div className="text-xs text-muted-foreground">
-                  Record your exercise
-                </div>
-              </button>
-              <button
-                onClick={() => navigate("/dashboard/progress")}
-                className="w-full text-left px-3 py-2 rounded hover:bg-secondary/50 transition-colors"
+                <div className="text-xl">💪</div>
+                <div className="font-bold">Log Workout</div>
+              </Button>
+              <Button
+                variant="secondary"
+                className="flex flex-col h-auto py-4 gap-2 border border-transparent hover:border-primary/20"
+                onClick={() => navigate("/dashboard/settings")}
               >
-                <div className="font-semibold text-foreground">📈 View Progress</div>
-                <div className="text-xs text-muted-foreground">
-                  See your improvements
-                </div>
-              </button>
+                <div className="text-xl">⚙️</div>
+                <div className="font-bold">Settings</div>
+              </Button>
             </div>
           </CardContent>
         </Card>
       </div>
-    </div>
+    </div >
   );
 }

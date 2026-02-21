@@ -22,78 +22,89 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts";
-import { TrendingDown, TrendingUp, Calendar, Target } from "lucide-react";
+import { TrendingDown, TrendingUp, Calendar, Target, Loader2 } from "lucide-react";
 import { useTheme } from "../contexts/theme-context";
-
-const weightData = [
-  { week: "Week 1", weight: 72, target: 70 },
-  { week: "Week 2", weight: 71.5, target: 70 },
-  { week: "Week 3", weight: 71.2, target: 70 },
-  { week: "Week 4", weight: 70.8, target: 70 },
-  { week: "Week 5", weight: 70.5, target: 70 },
-  { week: "Week 6", weight: 70.2, target: 70 },
-  { week: "Week 7", weight: 70.0, target: 70 },
-  { week: "Week 8", weight: 69.8, target: 70 },
-];
-
-const activityData = [
-  { week: "Week 1", workouts: 4, calories: 1850 },
-  { week: "Week 2", workouts: 5, calories: 1920 },
-  { week: "Week 3", workouts: 5, calories: 1880 },
-  { week: "Week 4", workouts: 6, calories: 1950 },
-  { week: "Week 5", workouts: 5, calories: 1900 },
-  { week: "Week 6", workouts: 6, calories: 1980 },
-  { week: "Week 7", workouts: 5, calories: 1940 },
-  { week: "Week 8", workouts: 7, calories: 2000 },
-];
-
-const bodyMetricsData = [
-  { week: "Week 1", bmi: 23.5, bodyFat: 18.5 },
-  { week: "Week 2", bmi: 23.3, bodyFat: 18.2 },
-  { week: "Week 3", bmi: 23.2, bodyFat: 18.0 },
-  { week: "Week 4", bmi: 23.0, bodyFat: 17.8 },
-  { week: "Week 5", bmi: 22.9, bodyFat: 17.5 },
-  { week: "Week 6", bmi: 22.8, bodyFat: 17.3 },
-  { week: "Week 7", bmi: 22.7, bodyFat: 17.0 },
-  { week: "Week 8", bmi: 22.6, bodyFat: 16.8 },
-];
-
-const milestones = [
-  {
-    date: "2026-01-15",
-    title: "Started Journey",
-    description: "Began fitness program",
-  },
-  {
-    date: "2026-01-22",
-    title: "First Week Complete",
-    description: "Completed all 5 workouts",
-  },
-  {
-    date: "2026-02-01",
-    title: "Lost 1kg",
-    description: "First weight milestone achieved",
-  },
-  {
-    date: "2026-02-10",
-    title: "Consistency Streak",
-    description: "14 days of hitting calorie goals",
-  },
-  {
-    date: "2026-02-17",
-    title: "Target Weight",
-    description: "Reached 70kg goal weight",
-  },
-];
+import { useState, useEffect } from "react";
+import { bodyMeasurementAPI, summaryAPI, tokenService } from "../../services/api";
+import { useNavigate } from "react-router";
 
 export function ProgressPage() {
   const { theme } = useTheme();
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+  const [measurements, setMeasurements] = useState<any[]>([]);
+  const [stats, setStats] = useState<any>(null);
+  const [weeklyCalories, setWeeklyCalories] = useState<any[]>([]);
 
-  const currentWeight = 69.8;
-  const startWeight = 72;
-  const targetWeight = 70;
-  const weightLost = startWeight - currentWeight;
-  const weightToGo = currentWeight - targetWeight;
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        if (!tokenService.isTokenValid()) {
+          navigate("/login");
+          return;
+        }
+
+        const [history, measurementStats] = await Promise.all([
+          bodyMeasurementAPI.getHistory(30),
+          bodyMeasurementAPI.getStats()
+        ]);
+
+        // Process history for charts (reverse because history is likely newest first)
+        const processedHistory = [...history].reverse().map((m: any) => ({
+          date: new Date(m.date_recorded).toLocaleDateString("en-US", { month: 'short', day: 'numeric' }),
+          weight: m.weight,
+          bmi: m.bmi,
+          bodyFat: m.body_fat_percentage,
+          target: 70 // Placeholder for real target from Goal model
+        }));
+
+        setMeasurements(processedHistory);
+        setStats(measurementStats);
+
+        // Fetch last 7 days of calorie data
+        const calData = [];
+        for (let i = 6; i >= 0; i--) {
+          const date = new Date();
+          date.setDate(date.getDate() - i);
+          const dateStr = date.toISOString().split("T")[0];
+          try {
+            const summary = await summaryAPI.getDailySummary(dateStr);
+            calData.push({
+              day: date.toLocaleDateString("en-US", { weekday: "short" }),
+              calories: summary.total_calories,
+              workouts: summary.workouts_count
+            });
+          } catch (e) {
+            calData.push({
+              day: date.toLocaleDateString("en-US", { weekday: "short" }),
+              calories: 0,
+              workouts: 0
+            });
+          }
+        }
+        setWeeklyCalories(calData);
+
+      } catch (err) {
+        console.error("Failed to fetch progress data:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [navigate]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  const weightLost30d = (stats?.weight_change_30d || 0);
+  const weightLostTotal = (stats?.weight_change_total || 0);
+  const weightLostRecent = (stats?.weight_change_recent || 0);
 
   // Theme colors
   const colors = {
@@ -108,77 +119,80 @@ export function ProgressPage() {
 
   return (
     <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2 text-foreground">
+      <div className="mb-8 font-poppins">
+        <h1 className="text-3xl font-bold mb-2 text-foreground tracking-tight">
           Progress Tracking
         </h1>
         <p className="text-muted-foreground">
-          Monitor your fitness journey with data-driven insights
+          Your fitness journey transformation in data
         </p>
       </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <Card className="bg-card border-border">
+        <Card className="bg-card border-border shadow-sm">
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-secondary rounded-lg flex items-center justify-center">
-                <TrendingDown className="w-6 h-6 text-foreground" />
+              <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
+                <TrendingDown className="w-6 h-6 text-primary" />
               </div>
               <div>
                 <div className="text-2xl font-bold text-foreground">
-                  -{weightLost.toFixed(1)}kg
+                  {Math.abs(weightLost30d).toFixed(1)}kg
                 </div>
-                <div className="text-sm text-muted-foreground">Weight Lost</div>
+                <div className="text-[10px] text-muted-foreground font-bold uppercase">
+                  {weightLost30d <= 0 ? "Lost (Last 30 days)" : "Gained (Last 30 days)"}
+                </div>
+                <div className="text-[10px] text-primary font-medium">
+                  {Math.abs(weightLostTotal).toFixed(1)}kg {weightLostTotal <= 0 ? "Total Loss" : "Total Gain"}
+                </div>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-card border-border">
+        <Card className="bg-card border-border shadow-sm">
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-secondary rounded-lg flex items-center justify-center">
-                <Target className="w-6 h-6 text-foreground" />
+              <div className="w-12 h-12 bg-orange-500/10 rounded-xl flex items-center justify-center">
+                <Target className="w-6 h-6 text-orange-500" />
               </div>
               <div>
                 <div className="text-2xl font-bold text-foreground">
-                  {Math.abs(weightToGo).toFixed(1)}kg
+                  {measurements[measurements.length - 1]?.weight || 'N/A'}kg
                 </div>
-                <div className="text-sm text-muted-foreground">
-                  {weightToGo > 0 ? "Above Target" : "Below Target"}
+                <div className="text-sm text-muted-foreground font-medium">Current Weight</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card border-border shadow-sm">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-blue-500/10 rounded-xl flex items-center justify-center">
+                <Calendar className="w-6 h-6 text-blue-500" />
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-foreground">{stats?.total_measurements || 0}</div>
+                <div className="text-sm text-muted-foreground font-medium">
+                  Check-ins
                 </div>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-card border-border">
+        <Card className="bg-card border-border shadow-sm">
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-secondary rounded-lg flex items-center justify-center">
-                <Calendar className="w-6 h-6 text-foreground" />
+              <div className="w-12 h-12 bg-green-500/10 rounded-xl flex items-center justify-center">
+                <TrendingUp className="w-6 h-6 text-green-500" />
               </div>
               <div>
-                <div className="text-2xl font-bold text-foreground">8</div>
-                <div className="text-sm text-muted-foreground">
-                  Weeks Active
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card border-border">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-secondary rounded-lg flex items-center justify-center">
-                <TrendingUp className="w-6 h-6 text-foreground" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-foreground">97%</div>
-                <div className="text-sm text-muted-foreground">
-                  Goal Achievement
+                <div className="text-2xl font-bold text-foreground">{stats?.current_streak || 0}d</div>
+                <div className="text-sm text-muted-foreground font-medium">
+                  Recent Consistency
                 </div>
               </div>
             </div>
@@ -188,51 +202,43 @@ export function ProgressPage() {
 
       {/* Charts */}
       <Tabs defaultValue="weight" className="mb-8">
-        <TabsList className="bg-muted mb-6">
-          <TabsTrigger value="weight">Weight Progress</TabsTrigger>
-          <TabsTrigger value="activity">Activity Metrics</TabsTrigger>
-          <TabsTrigger value="body">Body Composition</TabsTrigger>
+        <TabsList className="bg-secondary/50 p-1 mb-6 rounded-xl">
+          <TabsTrigger value="weight" className="rounded-lg px-6">Weight History</TabsTrigger>
+          <TabsTrigger value="activity" className="rounded-lg px-6">Calorie Intake</TabsTrigger>
+          <TabsTrigger value="body" className="rounded-lg px-6">Calculated Metrics</TabsTrigger>
         </TabsList>
 
         <TabsContent value="weight">
-          <Card className="bg-card border-border">
+          <Card className="bg-card border-border shadow-md">
             <CardHeader>
               <CardTitle className="text-foreground">Weight Tracking</CardTitle>
               <p className="text-sm text-muted-foreground">
-                Weekly weight measurements vs target goal
+                Trend of weight measurements over the last 30 entries
               </p>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={400}>
-                <LineChart data={weightData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
-                  <XAxis dataKey="week" stroke={colors.text} />
-                  <YAxis stroke={colors.text} domain={[68, 73]} />
+              <ResponsiveContainer width="100%" height={380}>
+                <LineChart data={measurements}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} vertical={false} />
+                  <XAxis dataKey="date" stroke={colors.text} axisLine={false} tickLine={false} />
+                  <YAxis stroke={colors.text} axisLine={false} tickLine={false} domain={['dataMin - 1', 'dataMax + 1']} />
                   <Tooltip
                     contentStyle={{
                       backgroundColor: colors.background,
                       border: `1px solid ${colors.border}`,
-                      borderRadius: "8px",
-                      color: colors.tooltipText,
+                      borderRadius: "12px",
+                      boxShadow: "0 10px 15px -3px rgba(0,0,0,0.1)"
                     }}
                   />
-                  <Legend />
                   <Line
                     type="monotone"
                     dataKey="weight"
                     stroke={colors.primary}
-                    strokeWidth={3}
-                    dot={{ fill: colors.primary, r: 5 }}
-                    name="Current Weight"
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="target"
-                    stroke={colors.secondary}
-                    strokeWidth={2}
-                    strokeDasharray="5 5"
-                    dot={{ fill: colors.secondary, r: 4 }}
-                    name="Target Weight"
+                    strokeWidth={4}
+                    dot={{ fill: colors.primary, r: 6, strokeWidth: 2, stroke: "#fff" }}
+                    activeDot={{ r: 8 }}
+                    name="Weight (kg)"
+                    animationDuration={1500}
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -242,68 +248,60 @@ export function ProgressPage() {
 
         <TabsContent value="activity">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card className="bg-card border-border">
+            <Card className="bg-card border-border shadow-md">
               <CardHeader>
-                <CardTitle className="text-foreground">
-                  Weekly Workouts
-                </CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  Number of training sessions per week
-                </p>
+                <CardTitle className="text-foreground">Daily Calorie Consumption</CardTitle>
+                <p className="text-sm text-muted-foreground">Last 7 days energy intake</p>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={350}>
-                  <BarChart data={activityData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
-                    <XAxis dataKey="week" stroke={colors.text} />
-                    <YAxis stroke={colors.text} />
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={weeklyCalories}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} vertical={false} />
+                    <XAxis dataKey="day" stroke={colors.text} axisLine={false} tickLine={false} />
+                    <YAxis stroke={colors.text} axisLine={false} tickLine={false} />
                     <Tooltip
                       contentStyle={{
                         backgroundColor: colors.background,
                         border: `1px solid ${colors.border}`,
-                        borderRadius: "8px",
-                        color: colors.tooltipText,
+                        borderRadius: "12px",
                       }}
                     />
                     <Bar
-                      dataKey="workouts"
+                      dataKey="calories"
                       fill={colors.primary}
-                      radius={[8, 8, 0, 0]}
+                      radius={[6, 6, 0, 0]}
+                      name="Calories"
                     />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
             </Card>
 
-            <Card className="bg-card border-border">
+            <Card className="bg-card border-border shadow-md">
               <CardHeader>
-                <CardTitle className="text-foreground">
-                  Average Daily Calories
-                </CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  Calorie consumption trends
-                </p>
+                <CardTitle className="text-foreground">Workout Frequency</CardTitle>
+                <p className="text-sm text-muted-foreground">Sessions recorded per day</p>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={350}>
-                  <LineChart data={activityData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
-                    <XAxis dataKey="week" stroke={colors.text} />
-                    <YAxis stroke={colors.text} domain={[1800, 2050]} />
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={weeklyCalories}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} vertical={false} />
+                    <XAxis dataKey="day" stroke={colors.text} axisLine={false} tickLine={false} />
+                    <YAxis stroke={colors.text} axisLine={false} tickLine={false} />
                     <Tooltip
                       contentStyle={{
                         backgroundColor: colors.background,
                         border: `1px solid ${colors.border}`,
-                        borderRadius: "8px",
-                        color: colors.tooltipText,
+                        borderRadius: "12px",
                       }}
                     />
                     <Line
-                      type="monotone"
-                      dataKey="calories"
-                      stroke={colors.primary}
+                      type="stepAfter"
+                      dataKey="workouts"
+                      stroke="#f97316"
                       strokeWidth={3}
-                      dot={{ fill: colors.primary, r: 5 }}
+                      dot={{ fill: "#f97316", r: 4 }}
+                      name="Workouts"
                     />
                   </LineChart>
                 </ResponsiveContainer>
@@ -313,37 +311,23 @@ export function ProgressPage() {
         </TabsContent>
 
         <TabsContent value="body">
-          <Card className="bg-card border-border">
+          <Card className="bg-card border-border shadow-md">
             <CardHeader>
-              <CardTitle className="text-foreground">
-                Body Composition Analysis
-              </CardTitle>
-              <p className="text-sm text-muted-foreground">
-                BMI and body fat percentage over time
-              </p>
+              <CardTitle className="text-foreground">Body Composition Analysis</CardTitle>
+              <p className="text-sm text-muted-foreground">BMI and Body Fat % trends</p>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={400}>
-                <LineChart data={bodyMetricsData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
-                  <XAxis dataKey="week" stroke={colors.text} />
-                  <YAxis
-                    yAxisId="left"
-                    stroke={colors.text}
-                    domain={[22, 24]}
-                  />
-                  <YAxis
-                    yAxisId="right"
-                    orientation="right"
-                    stroke={colors.text}
-                    domain={[16, 19]}
-                  />
+              <ResponsiveContainer width="100%" height={380}>
+                <LineChart data={measurements}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} vertical={false} />
+                  <XAxis dataKey="date" stroke={colors.text} />
+                  <YAxis yAxisId="left" stroke={colors.text} domain={['dataMin - 1', 'dataMax + 1']} />
+                  <YAxis yAxisId="right" orientation="right" stroke={colors.text} domain={['dataMin - 1', 'dataMax + 1']} />
                   <Tooltip
                     contentStyle={{
                       backgroundColor: colors.background,
                       border: `1px solid ${colors.border}`,
-                      borderRadius: "8px",
-                      color: colors.tooltipText,
+                      borderRadius: "12px",
                     }}
                   />
                   <Legend />
@@ -351,18 +335,18 @@ export function ProgressPage() {
                     yAxisId="left"
                     type="monotone"
                     dataKey="bmi"
-                    stroke={colors.primary}
+                    stroke="#8b5cf6"
                     strokeWidth={3}
-                    dot={{ fill: colors.primary, r: 5 }}
+                    dot={{ r: 4 }}
                     name="BMI"
                   />
                   <Line
                     yAxisId="right"
                     type="monotone"
                     dataKey="bodyFat"
-                    stroke={colors.secondary}
+                    stroke="#ec4899"
                     strokeWidth={3}
-                    dot={{ fill: colors.secondary, r: 5 }}
+                    dot={{ r: 4 }}
                     name="Body Fat %"
                   />
                 </LineChart>
@@ -372,42 +356,24 @@ export function ProgressPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Milestones */}
-      <Card className="bg-card border-border">
-        <CardHeader>
-          <CardTitle className="text-foreground">Journey Milestones</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Key achievements along your fitness path
-          </p>
-        </CardHeader>
-        <CardContent>
-          <div className="relative">
-            {/* Timeline line */}
-            <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-border" />
-
-            <div className="space-y-6">
-              {milestones.map((milestone, index) => (
-                <div key={index} className="relative pl-14">
-                  {/* Dot */}
-                  <div className="absolute left-4 top-1 w-5 h-5 bg-background rounded-full border-4 border-primary" />
-
-                  <div className="bg-muted/50 border border-border rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-semibold text-foreground">
-                        {milestone.title}
-                      </h4>
-                      <span className="text-sm text-muted-foreground">
-                        {milestone.date}
-                      </span>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      {milestone.description}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
+      {/* Simple Information Banner */}
+      <Card className="bg-primary/5 border-primary/10 overflow-hidden relative">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 rounded-full -mr-16 -mt-16 blur-3xl" />
+        <CardContent className="p-8 flex flex-col md:flex-row items-center gap-6">
+          <div className="text-4xl">🚀</div>
+          <div className="flex-1">
+            <h3 className="text-xl font-bold text-foreground mb-1">Consistency is Key!</h3>
+            <p className="text-muted-foreground max-w-2xl">
+              You've recorded {stats?.total_measurements || 0} measurements since joining.
+              Every data point helps our AI model better understand your unique biology to provide more accurate recommendations.
+            </p>
           </div>
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="bg-primary text-primary-foreground px-6 py-2.5 rounded-xl font-bold hover:opacity-90 transition-all shadow-lg shadow-primary/20"
+          >
+            Back to Dashboard
+          </button>
         </CardContent>
       </Card>
     </div>
