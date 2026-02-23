@@ -4,12 +4,13 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.shortcuts import get_object_or_404
+from django.db import models
 from django.db.models import Avg, Min, Max, Count
 from django.utils import timezone
 from datetime import timedelta
 from decimal import Decimal
 
-from .models import UserSettings, Goal, BodyMeasurement, UserProfile, CustomFood, PresetFood, MealEntry, WorkoutEntry, PresetWorkout, DailyStreak, UserAllergy, DailySummary, CustomWorkout
+from .models import UserSettings, Goal, BodyMeasurement, UserProfile, CustomFood, PresetFood, MealEntry, WorkoutEntry, PresetWorkout, DailyStreak, UserAllergy, DailySummary, CustomWorkout, GamificationProfile, Badge, UserBadge
 from .serializers_body import (
     UserSettingsSerializer,
     GoalSerializer,
@@ -18,6 +19,7 @@ from .serializers_body import (
     BodyMeasurementCreateSerializer,
     BodyMeasurementStatsSerializer,
     CustomFoodSerializer,
+    CustomFoodCreateSerializer,
     PresetFoodSerializer,
     MealEntrySerializer,
     MealEntryCreateSerializer,
@@ -27,7 +29,9 @@ from .serializers_body import (
     DailySummarySerializer,
     UserAllergySerializer,
     PresetWorkoutSerializer,
-    CustomWorkoutSerializer
+    CustomWorkoutSerializer,
+    GamificationProfileSerializer,
+    BadgeUnlockSerializer
 )
 
 
@@ -338,10 +342,10 @@ def custom_foods(request):
         return Response(serializer.data)
     
     elif request.method == 'POST':
-        serializer = CustomFoodSerializer(data=request.data)
+        serializer = CustomFoodCreateSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
-            serializer.save(user=request.user)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            food = serializer.save()
+            return Response(CustomFoodSerializer(food).data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -408,9 +412,18 @@ def meal_entries(request):
         serializer = MealEntryCreateSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
             meal = serializer.save()
+            
+            # Award points and check badges
+            new_badges = award_points_and_check_badges(request.user, points=20)
+            
             # Update streak
             update_user_streak(request.user)
-            return Response(MealEntrySerializer(meal).data, status=status.HTTP_201_CREATED)
+            
+            response_data = MealEntrySerializer(meal).data
+            if new_badges:
+                response_data['new_badges'] = BadgeUnlockSerializer(new_badges, many=True).data
+                
+            return Response(response_data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -449,9 +462,18 @@ def workout_entries(request):
         serializer = WorkoutEntryCreateSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
             workout = serializer.save()
+            
+            # Award points and check badges
+            new_badges = award_points_and_check_badges(request.user, workout)
+            
             # Update streak
             update_user_streak(request.user)
-            return Response(WorkoutEntrySerializer(workout).data, status=status.HTTP_201_CREATED)
+            
+            response_data = WorkoutEntrySerializer(workout).data
+            if new_badges:
+                response_data['new_badges'] = BadgeUnlockSerializer(new_badges, many=True).data
+                
+            return Response(response_data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -640,20 +662,52 @@ def meal_recommendations(request):
         if any(a in ing for a in allergies_list for ing in food_ingredients):
             continue
             
-        # 3. Medical Condition Check
+        # 3. Medical Condition Check (Legacy Fallback)
         if is_diabetic and not food.is_diabetic_friendly:
             if food.carbs > 30: continue
         
         if has_hypertension and not food.is_heart_healthy:
             if food.fats > 20: continue
 
+        # --- High-Tech Future-Proof Logic ---
+        food_score = 0
+        
+        # 4. Global Medical Tag Logic (Positive/Negative)
+        suitable_tags = [t.strip().lower() for t in (food.suitable_for or "").split(',') if t.strip()]
+        avoid_tags = [t.strip().lower() for t in (food.avoid_for or "").split(',') if t.strip()]
+        
+        for cond in conditions:
+            if cond in suitable_tags:
+                food_score += 40 # Scientific match boost
+            if cond in avoid_tags:
+                food_score -= 100 # Safety penalty
+        
+        # 5. Variety Filter (Anti-Boredom)
+        recent_meals = MealEntry.objects.filter(user=request.user).order_by('-date')[:15]
+        recent_food_names = [m.food_name for m in recent_meals]
+        if food.food_name in recent_food_names:
+            food_score -= 15 # Frequency penalty
+            
+        # 6. New Item Discovery Boost
+        lifetime_count = MealEntry.objects.filter(user=request.user, food_name=food.food_name).count()
+        if lifetime_count == 0:
+            food_score += 20 # Exploration boost
+            
+        # Attach score for sorting
+        food.algo_score = food_score
         safe_foods.append(food)
 
-    # 4. Dynamic Ranking
-    if nutrition_gap['protein'] > 20:
-        safe_foods.sort(key=lambda x: x.protein, reverse=True)
-    elif nutrition_gap['calories'] < 500:
-        safe_foods.sort(key=lambda x: x.calories)
+    # 4. Dynamic Ranking (Combined AI Score + Nutrition Gap)
+    def calculate_final_score(food):
+        score = food.algo_score
+        # Boost based on nutrition gaps
+        if nutrition_gap['protein'] > 20:
+            score += (food.protein * 2)
+        if nutrition_gap['calories'] > 500:
+            score += (food.calories / 10)
+        return score
+
+    safe_foods.sort(key=calculate_final_score, reverse=True)
 
     total_safe_foods = len(safe_foods)
     if limit:
@@ -812,6 +866,28 @@ def workout_recommendations(request):
         # 3. Goal Alignment
         if hasattr(w, 'target_goal') and goal and w.target_goal == goal.goal_type:
             score += 20
+
+        # --- High-Tech Future-Proof Logic ---
+        # 4. Global Medical Tag Logic (Positive/Negative)
+        suitable_tags = [t.strip().lower() for t in (getattr(w, 'suitable_for', '') or "").split(',') if t.strip()]
+        avoid_tags = [t.strip().lower() for t in (getattr(w, 'avoid_for', '') or "").split(',') if t.strip()]
+        
+        for cond in conditions:
+            if cond in suitable_tags:
+                score += 40 # Scientific match boost
+            if cond in avoid_tags:
+                score -= 100 # Safety penalty (virtually hides it)
+
+        # 5. Variety Filter (Anti-Boredom)
+        recent_logs = WorkoutEntry.objects.filter(user=request.user).order_by('-date')[:15]
+        recent_names = [log.exercise_name for log in recent_logs]
+        if w.name in recent_names:
+            score -= 15 # Frequency penalty
+        
+        # 6. New Item Discovery Boost
+        lifetime_count = WorkoutEntry.objects.filter(user=request.user, exercise_name=w.name).count()
+        if lifetime_count == 0:
+            score += 20 # Exploration boost
             
         recommendations.append({
             'id': w.id,
@@ -877,3 +953,88 @@ def custom_workout_detail(request, pk):
     elif request.method == 'DELETE':
         workout.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+@api_view(['GET'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticated])
+def all_workout_presets(request):
+    """Fetch all preset and custom workouts for the searchable bar."""
+    presets = PresetWorkout.objects.all()
+    customs = CustomWorkout.objects.filter(user=request.user)
+    
+    preset_data = PresetWorkoutSerializer(presets, many=True).data
+    for p in preset_data:
+        p['is_custom'] = False
+        
+    custom_data = CustomWorkoutSerializer(customs, many=True).data
+    for c in custom_data:
+        c['is_custom'] = True
+        
+    return Response(preset_data + custom_data)
+
+# ==================== GAMIFICATION ====================
+
+def award_points_and_check_badges(user, workout_entry=None, points=0):
+    """Award points and check for new badges."""
+    profile, _ = GamificationProfile.objects.get_or_create(user=user)
+    
+    if workout_entry:
+        # Points: 50 base per workout if not specified
+        points = points or 50
+    
+    if points > 0:
+        profile.add_points(points)
+    
+    new_badges = []
+    
+    # Check general badges
+    badges = Badge.objects.exclude(userbadge__user=user)
+    
+    for badge in badges:
+        earned = False
+        if badge.requirement_type == 'workout_count':
+            count = WorkoutEntry.objects.filter(user=user).count()
+            if count >= badge.requirement_value:
+                earned = True
+        elif badge.requirement_type == 'streak':
+            streak = getattr(user, 'daily_streak', None)
+            if streak and streak.current_streak >= badge.requirement_value:
+                earned = True
+        elif badge.requirement_type == 'body_part_count':
+            count = WorkoutEntry.objects.filter(user=user, body_part__iexact=badge.body_part).count()
+            if count >= badge.requirement_value:
+                earned = True
+        elif badge.requirement_type == 'total_calories':
+            total_cal = WorkoutEntry.objects.filter(user=user).aggregate(models.Sum('calories_burned'))['calories_burned__sum'] or 0
+            if total_cal >= badge.requirement_value:
+                earned = True
+                
+        if earned:
+            ub = UserBadge.objects.create(user=user, badge=badge)
+            new_badges.append(ub)
+            
+    return new_badges
+
+@api_view(['GET'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticated])
+def gamification_status(request):
+    """Get user's points, level, and badges."""
+    profile, _ = GamificationProfile.objects.get_or_create(user=request.user)
+    serializer = GamificationProfileSerializer(profile)
+    
+    # Also include unacknowledged (new) badges
+    new_badges = UserBadge.objects.filter(user=request.user, is_seen=False)
+    data = serializer.data
+    data['new_badges'] = BadgeUnlockSerializer(new_badges, many=True).data
+    
+    return Response(data)
+
+@api_view(['POST'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticated])
+def mark_badges_seen(request):
+    """Mark badge popups as seen."""
+    badge_ids = request.data.get('badge_ids', [])
+    if badge_ids:
+        UserBadge.objects.filter(user=request.user, badge_id__in=badge_ids).update(is_seen=True)
+    return Response({'status': 'success'})

@@ -31,11 +31,16 @@ export function LoginPage() {
     setError("");
 
     try {
-      await authAPI.login({
+      const response = await authAPI.login({
         email: formData.email,
         password: formData.password,
       });
-      navigate("/dashboard");
+
+      if (response.user.is_staff) {
+        navigate("/dashboard/admin");
+      } else {
+        navigate("/dashboard");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {

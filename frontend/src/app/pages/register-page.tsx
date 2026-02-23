@@ -15,37 +15,9 @@ export function RegisterPage() {
     email: "",
     password: "",
     confirmPassword: "",
-    phone: "",
-    age: "",
-    gender: "",
-    medical_conditions: "",
   });
   const [loading, setLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-
-  const validatePhone = (phone: string): string | null => {
-    if (!phone || phone.trim() === "") return null; // Optional field
-    const cleaned = phone.replace(/\D/g, "");
-    if (cleaned.length !== 10) {
-      return "Phone must be exactly 10 digits";
-    }
-    if (!/^[6-9]/.test(cleaned)) {
-      return "Phone must start with 6, 7, 8, or 9";
-    }
-    return null;
-  };
-
-  const validateAge = (age: string): string | null => {
-    if (!age || age.trim() === "") return null; // Optional field
-    const ageNum = parseInt(age);
-    if (isNaN(ageNum)) {
-      return "Age must be a number";
-    }
-    if (ageNum < 1 || ageNum > 150) {
-      return "Age must be between 1 and 150";
-    }
-    return null;
-  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -61,20 +33,7 @@ export function RegisterPage() {
   };
 
   const handleBlur = (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-
-    // Validate specific fields
-    if (name === "phone") {
-      const error = validatePhone(value);
-      if (error) {
-        setFieldErrors((prev) => ({ ...prev, phone: error }));
-      }
-    } else if (name === "age") {
-      const error = validateAge(value);
-      if (error) {
-        setFieldErrors((prev) => ({ ...prev, age: error }));
-      }
-    }
+    // Basic validation on blur if needed
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -104,16 +63,6 @@ export function RegisterPage() {
       newErrors.confirmPassword = "Passwords don't match";
     }
 
-    // Validate optional fields when filled
-    if (formData.phone) {
-      const phoneError = validatePhone(formData.phone);
-      if (phoneError) newErrors.phone = phoneError;
-    }
-    if (formData.age) {
-      const ageError = validateAge(formData.age);
-      if (ageError) newErrors.age = ageError;
-    }
-
     if (Object.keys(newErrors).length > 0) {
       setFieldErrors(newErrors);
       setLoading(false);
@@ -126,10 +75,6 @@ export function RegisterPage() {
         email: formData.email,
         password: formData.password,
         confirmPassword: formData.confirmPassword,
-        phone: formData.phone || undefined,
-        age: formData.age ? parseInt(formData.age) : undefined,
-        gender: formData.gender || undefined,
-        medical_conditions: formData.medical_conditions || undefined,
       });
       // After registration, go to onboarding for body measurements
       navigate("/onboarding");
@@ -315,85 +260,6 @@ export function RegisterPage() {
                 {renderFieldError("confirmPassword")}
               </div>
 
-              {/* Optional Fields */}
-              <div className="grid grid-cols-2 gap-3">
-                {/* Phone */}
-                <div className="space-y-2">
-                  <Label htmlFor="phone" className="text-foreground text-sm">
-                    Phone (Optional)
-                  </Label>
-                  <Input
-                    id="phone"
-                    name="phone"
-                    type="tel"
-                    placeholder="10 digits"
-                    value={formData.phone}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                    disabled={loading}
-                    className={`border-border bg-background text-foreground placeholder:text-muted-foreground text-sm ${fieldErrors.phone ? "border-destructive" : ""
-                      }`}
-                  />
-                  {renderFieldError("phone")}
-                </div>
-
-                {/* Age */}
-                <div className="space-y-2">
-                  <Label htmlFor="age" className="text-foreground text-sm">
-                    Age (Optional)
-                  </Label>
-                  <Input
-                    id="age"
-                    name="age"
-                    type="number"
-                    placeholder="25"
-                    value={formData.age}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                    min="1"
-                    max="150"
-                    disabled={loading}
-                    className={`border-border bg-background text-foreground placeholder:text-muted-foreground text-sm ${fieldErrors.age ? "border-destructive" : ""
-                      }`}
-                  />
-                  {renderFieldError("age")}
-                </div>
-              </div>
-
-              {/* Gender */}
-              <div className="space-y-2">
-                <Label htmlFor="gender" className="text-foreground">
-                  Gender (Optional)
-                </Label>
-                <select
-                  id="gender"
-                  name="gender"
-                  value={formData.gender}
-                  onChange={handleChange}
-                  disabled={loading}
-                  className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground placeholder:text-muted-foreground text-sm"
-                >
-                  <option value="">Select gender</option>
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
-                </select>
-              </div>
-
-              {/* Medical Conditions */}
-              <div className="space-y-2">
-                <Label htmlFor="medical_conditions" className="text-foreground">
-                  Medical Conditions (Optional)
-                </Label>
-                <textarea
-                  id="medical_conditions"
-                  name="medical_conditions"
-                  placeholder="e.g. Diabetes, Hypertension, etc."
-                  value={formData.medical_conditions}
-                  onChange={(e) => setFormData(prev => ({ ...prev, medical_conditions: e.target.value }))}
-                  disabled={loading}
-                  className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground placeholder:text-muted-foreground text-sm min-h-[80px]"
-                />
-              </div>
 
               {/* Submit */}
               <Button

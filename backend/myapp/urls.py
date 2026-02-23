@@ -2,6 +2,7 @@ from django.urls import path
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from . import views
 from . import views_body
+from . import views_admin
 
 urlpatterns = [
     # Auth endpoints
@@ -52,4 +53,16 @@ urlpatterns = [
     # Custom Workouts Templates
     path('custom-workouts/', views_body.custom_workouts, name='custom_workouts'),
     path('custom-workouts/<int:pk>/', views_body.custom_workout_detail, name='custom_workout_detail'),
+    path('all-workout-presets/', views_body.all_workout_presets, name='all_workout_presets'),
+    
+    # Gamification
+    path('gamification/status/', views_body.gamification_status, name='gamification_status'),
+    path('gamification/mark-seen/', views_body.mark_badges_seen, name='mark_badges_seen'),
+
+    # Admin Dashboard & Management
+    path('admin-stats/', views_admin.admin_dashboard_stats, name='admin_stats'),
+    path('admin/users/', views_admin.admin_user_list, name='admin_users'),
+    path('admin/users/<int:pk>/toggle/', views_admin.admin_toggle_user, name='admin_toggle_user'),
+    path('admin/foods/', views_admin.admin_add_food, name='admin_add_food'),
+    path('admin/workouts/', views_admin.admin_add_workout, name='admin_add_workout'),
 ]

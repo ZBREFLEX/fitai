@@ -350,6 +350,9 @@ class PresetFood(models.Model):
     is_gluten_free = models.BooleanField(default=False)
     is_vegan = models.BooleanField(default=False)
     
+    suitable_for = models.TextField(blank=True, default='', help_text='Comma-separated conditions this is good for (e.g., diabetes, PCOS)')
+    avoid_for = models.TextField(blank=True, default='', help_text='Comma-separated conditions this should be avoided for (e.g., hypertension)')
+    
     created_at = models.DateTimeField(auto_now_add=True)
     
     class Meta:
@@ -461,6 +464,8 @@ class WorkoutEntry(models.Model):
     )
     intensity = models.CharField(max_length=20, choices=INTENSITY_CHOICES, default='moderate')
     body_part = models.CharField(max_length=50, blank=True, help_text='e.g., Chest, Back, Legs')
+    reps = models.IntegerField(null=True, blank=True, help_text='Number of repetitions')
+    sets = models.IntegerField(null=True, blank=True, help_text='Number of sets')
     
     # Calculated
     calories_burned = models.IntegerField()
@@ -505,8 +510,9 @@ class WorkoutEntry(models.Model):
         return int(base * self.duration_minutes * multiplier)
     
     def save(self, *args, **kwargs):
-        """Auto-calculate calories burned before saving."""
-        self.calories_burned = self.calculate_calories_burned()
+        """Auto-calculate calories burned before saving if not provided."""
+        if not self.calories_burned or self.calories_burned == 0:
+            self.calories_burned = self.calculate_calories_burned()
         super().save(*args, **kwargs)
 
 
@@ -601,6 +607,8 @@ class PresetWorkout(models.Model):
     is_low_impact = models.BooleanField(default=False, help_text='Safe for joint issues/asthma')
     requires_equipment = models.BooleanField(default=False)
     body_part = models.CharField(max_length=50, blank=True, help_text='e.g., Chest, Back, Legs, Cardio')
+    suitable_for = models.TextField(blank=True, default='', help_text='Comma-separated conditions this is good for (e.g., weight loss, strength)')
+    avoid_for = models.TextField(blank=True, default='', help_text='Comma-separated conditions this should be avoided for (e.g., asthma, knee injury)')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -671,3 +679,59 @@ class CustomWorkout(models.Model):
         base = base_calories.get(self.workout_type, 5)
         multiplier = intensity_multipliers.get(self.intensity, 1.0)
         return int(base * self.duration_minutes * multiplier)
+
+class GamificationProfile(models.Model):
+    """Tracks user points, level, and XP."""
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='gamification')
+    total_points = models.IntegerField(default=0)
+    xp = models.IntegerField(default=0)
+    level = models.IntegerField(default=1)
+    
+    LEVEL_NAMES = {
+        1: 'Beginner',
+        2: 'Intermediate',
+        3: 'Advanced',
+        4: 'Elite'
+    }
+
+    def __str__(self):
+        return f"{self.user.username} - Level {self.level} ({self.total_points} pts)"
+
+    def add_points(self, points):
+        self.total_points += points
+        self.xp += points
+        # Simple level logic: every 1000 XP is a level
+        new_level = (self.xp // 1000) + 1
+        self.level = min(new_level, 4) # Max level 4 (Elite)
+        self.save()
+        return self.level
+
+class Badge(models.Model):
+    """Badge definitions."""
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField()
+    icon_name = models.CharField(max_length=50, help_text="Lucide icon name")
+    requirement_type = models.CharField(max_length=50, choices=[
+        ('workout_count', 'Total Workouts'),
+        ('streak', 'Day Streak'),
+        ('body_part_count', 'Body Part Workouts'),
+        ('total_calories', 'Total Calories Burned')
+    ])
+    requirement_value = models.IntegerField()
+    body_part = models.CharField(max_length=50, blank=True, null=True)
+
+    def __str__(self):
+        return self.name
+
+class UserBadge(models.Model):
+    """Badges earned by users."""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='earned_badges')
+    badge = models.ForeignKey(Badge, on_delete=models.CASCADE)
+    date_earned = models.DateTimeField(auto_now_add=True)
+    is_seen = models.BooleanField(default=False)
+
+    class Meta:
+        unique_together = ('user', 'badge')
+
+    def __str__(self):
+        return f"{self.user.username} earned {self.badge.name}"

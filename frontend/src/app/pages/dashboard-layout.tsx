@@ -1,5 +1,5 @@
 import { Outlet, useNavigate, useLocation } from 'react-router';
-import { Brain, Home, Utensils, Dumbbell, TrendingUp, Award, LogOut, Moon, Sun, Menu, X, Lightbulb, Settings as SettingsIcon } from 'lucide-react';
+import { Brain, Home, Utensils, Dumbbell, TrendingUp, Award, LogOut, Moon, Sun, Menu, X, Lightbulb, Settings as SettingsIcon, ShieldAlert } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { useTheme } from '../contexts/theme-context';
 import { useState, useEffect } from 'react';
@@ -10,7 +10,7 @@ export function DashboardLayout() {
   const location = useLocation();
   const { theme, toggleTheme } = useTheme();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [user, setUser] = useState<{ first_name: string; email: string } | null>(null);
+  const [user, setUser] = useState<{ first_name: string; email: string; is_staff: boolean } | null>(null);
 
   useEffect(() => {
     // Check if user is authenticated
@@ -45,6 +45,11 @@ export function DashboardLayout() {
     { icon: Lightbulb, label: 'Recommendations', path: '/dashboard/recommendations' },
     { icon: SettingsIcon, label: 'Settings', path: '/dashboard/settings' },
   ];
+
+  // Add Admin link if user is staff
+  if (user?.is_staff) {
+    menuItems.push({ icon: ShieldAlert, label: 'Admin Portal', path: '/dashboard/admin' });
+  }
 
   const isActive = (path: string) => {
     if (path === '/dashboard') {
@@ -119,8 +124,8 @@ export function DashboardLayout() {
                   setSidebarOpen(false);
                 }}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${active
-                    ? 'bg-sidebar-primary text-sidebar-primary-foreground'
-                    : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+                  ? 'bg-sidebar-primary text-sidebar-primary-foreground'
+                  : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
                   }`}
               >
                 <Icon className="w-5 h-5" />

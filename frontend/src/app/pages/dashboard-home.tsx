@@ -83,6 +83,12 @@ export function DashboardHome() {
         const profile = await settingsAPI.getUserFullData();
         setProfileData(profile);
 
+        // Redirect if user is staff
+        if (profile.is_staff) {
+          navigate("/dashboard/admin");
+          return;
+        }
+
         if (profile.profile?.latest_measurement) {
           setQuickWeight(profile.profile.latest_measurement.weight.toString());
           setQuickHeight(profile.profile.latest_measurement.height.toString());

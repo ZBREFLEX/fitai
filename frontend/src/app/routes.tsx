@@ -12,31 +12,41 @@ import { GamificationPage } from "./pages/gamification-page";
 import { ContactPage } from "./pages/contact-page";
 import { RecommendationsPage } from "./pages/recommendations-page";
 import { SettingsPage } from "./pages/settings-page";
+import { AdminDashboard } from "./pages/admin-dashboard";
+import { AdminUserManagement } from "./pages/admin-user-management";
+import { AdminCms } from "./pages/admin-cms";
+import { ErrorPage } from "./ErrorPage";
 
 export const router = createBrowserRouter([
     {
         path: "/",
         Component: LandingPage,
+        errorElement: <ErrorPage />,
     },
     {
         path: "/login",
         Component: LoginPage,
+        errorElement: <ErrorPage />,
     },
     {
         path: "/register",
         Component: RegisterPage,
+        errorElement: <ErrorPage />,
     },
     {
         path: "/onboarding",
         Component: OnboardingPage,
+        errorElement: <ErrorPage />,
     },
     {
         path: "/contact",
         Component: ContactPage,
+        errorElement: <ErrorPage />,
     },
     {
         path: "/dashboard",
         Component: DashboardLayout,
+        errorElement: <ErrorPage />,
         children: [
             {
                 index: true,
@@ -66,6 +76,23 @@ export const router = createBrowserRouter([
                 path: "settings",
                 Component: SettingsPage,
             },
+            {
+                path: "admin",
+                Component: AdminDashboard,
+            },
+            {
+                path: "admin/users",
+                Component: AdminUserManagement,
+            },
+            {
+                path: "admin/cms",
+                Component: AdminCms,
+            },
         ],
     },
+    // Catch-all route for global 404s
+    {
+        path: "*",
+        element: <ErrorPage />,
+    }
 ]);

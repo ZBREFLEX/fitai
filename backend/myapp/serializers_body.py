@@ -3,7 +3,7 @@ from django.contrib.auth.models import User
 from django.db.models import Q
 from django.utils import timezone
 from datetime import timedelta
-from .models import UserSettings, Goal, BodyMeasurement, UserProfile, CustomFood, PresetFood, MealEntry, WorkoutEntry, PresetWorkout, DailyStreak, UserAllergy, DailySummary, CustomWorkout
+from .models import UserSettings, Goal, BodyMeasurement, UserProfile, CustomFood, PresetFood, MealEntry, WorkoutEntry, PresetWorkout, DailyStreak, UserAllergy, DailySummary, CustomWorkout, Badge, GamificationProfile, UserBadge
 
 
 class UserSettingsSerializer(serializers.ModelSerializer):
@@ -153,6 +153,17 @@ class CustomFoodSerializer(serializers.ModelSerializer):
         return 'custom'
 
 
+class CustomFoodCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating custom foods."""
+    class Meta:
+        model = CustomFood
+        fields = ['food_name', 'calories', 'protein', 'carbs', 'fats', 'serving_size', 'is_favorite']
+    
+    def create(self, validated_data):
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)
+
+
 class PresetFoodSerializer(serializers.ModelSerializer):
     """Serializer for preset foods available to all users."""
     food_type = serializers.SerializerMethodField()
@@ -165,7 +176,7 @@ class PresetFoodSerializer(serializers.ModelSerializer):
             'id', 'food_name', 'calories', 'protein', 'carbs', 'fats', 'serving_size', 
             'ingredients', 'ingredients_list', 'is_favorite', 'food_type', 
             'is_diabetic_friendly', 'is_heart_healthy', 'is_gluten_free', 'is_vegan',
-            'created_at'
+            'suitable_for', 'avoid_for', 'created_at'
         ]
         read_only_fields = ['id', 'created_at', 'food_type', 'is_favorite', 'ingredients_list']
     
@@ -210,7 +221,7 @@ class WorkoutEntrySerializer(serializers.ModelSerializer):
         model = WorkoutEntry
         fields = [
             'id', 'date', 'workout_type', 'exercise_name', 'duration_minutes', 
-            'intensity', 'calories_burned', 'notes', 'created_at'
+            'intensity', 'body_part', 'reps', 'sets', 'calories_burned', 'notes', 'created_at'
         ]
         read_only_fields = ['id', 'calories_burned', 'created_at']
 
@@ -219,7 +230,15 @@ class WorkoutEntryCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating workout entries."""
     class Meta:
         model = WorkoutEntry
-        fields = ['date', 'workout_type', 'exercise_name', 'duration_minutes', 'intensity', 'notes']
+        fields = ['date', 'workout_type', 'exercise_name', 'duration_minutes', 'intensity', 'body_part', 'reps', 'sets', 'calories_burned', 'notes']
+        extra_kwargs = {
+            'calories_burned': {'required': False, 'allow_null': True},
+            'reps': {'required': False, 'allow_null': True},
+            'sets': {'required': False, 'allow_null': True},
+            'notes': {'required': False, 'allow_null': True},
+            'body_part': {'required': False},
+            'exercise_name': {'required': False}
+        }
     
     def create(self, validated_data):
         """Create workout entry with current user."""
@@ -263,7 +282,7 @@ class PresetWorkoutSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'workout_type', 'duration_minutes', 'intensity', 
             'description', 'benefits', 'target_goal', 'is_low_impact', 
-            'requires_equipment', 'body_part', 'created_at'
+            'requires_equipment', 'body_part', 'suitable_for', 'avoid_for', 'created_at'
         ]
 
 class CustomWorkoutSerializer(serializers.ModelSerializer):
@@ -284,3 +303,35 @@ class CustomWorkoutSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data['user'] = self.context['request'].user
         return super().create(validated_data)
+
+class BadgeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Badge
+        fields = ['id', 'name', 'description', 'icon_name', 'requirement_type', 'requirement_value', 'body_part']
+
+class UserBadgeSerializer(serializers.ModelSerializer):
+    badge = BadgeSerializer(read_only=True)
+    class Meta:
+        model = UserBadge
+        fields = ['id', 'badge', 'date_earned', 'is_seen']
+
+class GamificationProfileSerializer(serializers.ModelSerializer):
+    level_name = serializers.SerializerMethodField()
+    badges = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = GamificationProfile
+        fields = ['total_points', 'xp', 'level', 'level_name', 'badges']
+        
+    def get_level_name(self, obj):
+        return obj.LEVEL_NAMES.get(obj.level, 'Beginner')
+
+    def get_badges(self, obj):
+        badges = UserBadge.objects.filter(user=obj.user)
+        return UserBadgeSerializer(badges, many=True).data
+
+class BadgeUnlockSerializer(serializers.ModelSerializer):
+    badge = BadgeSerializer(read_only=True)
+    class Meta:
+        model = UserBadge
+        fields = ['id', 'badge', 'date_earned']

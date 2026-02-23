@@ -4,8 +4,9 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { RadioGroup, RadioGroupItem } from "../components/ui/radio-group";
-import { Brain, ArrowLeft, ArrowRight, Check } from "lucide-react";
-import { tokenService, bodyMeasurementAPI, goalAPI } from "../../services/api";
+import { Brain, ArrowLeft, ArrowRight, Check, Search, X } from "lucide-react";
+import { tokenService, bodyMeasurementAPI, goalAPI, settingsAPI } from "../../services/api";
+import { Badge } from "../components/ui/badge";
 
 export function OnboardingPage() {
   const navigate = useNavigate();
@@ -17,11 +18,20 @@ export function OnboardingPage() {
     height: "",
     weight: "",
     gender: "",
+    phone: "",
     activityLevel: "",
     fitnessGoal: "",
   });
+  const [selectedConditions, setSelectedConditions] = useState<string[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
 
-  const totalSteps = 2;
+  const commonConditions = [
+    "Diabetes", "Hypertension", "Asthma", "Cholesterol", "Arthritis",
+    "PCOS", "Thyroid", "Anemia", "Depression", "Anxiety",
+    "Back Pain", "Knee Injury", "Heart Disease", "None"
+  ];
+
+  const totalSteps = 3;
 
   // Check authentication
   useEffect(() => {
@@ -87,11 +97,17 @@ export function OnboardingPage() {
       // Save fitness goal
       await goalAPI.save(formData.fitnessGoal);
 
+      // Save profile updates (phone, medical conditions)
+      await settingsAPI.updateProfile({
+        phone: formData.phone || undefined,
+        medical_conditions: selectedConditions.join(", ") || undefined,
+      });
+
       navigate("/dashboard");
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Failed to save progress";
       console.error("Onboarding error:", errorMsg);
-      
+
       try {
         // Try to parse error object
         const errorObj = JSON.parse(errorMsg);
@@ -350,6 +366,97 @@ export function OnboardingPage() {
                       </div>
                     ))}
                   </RadioGroup>
+                </div>
+              </div>
+            )}
+
+            {currentStep === 3 && (
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div>
+                  <h2 className="text-3xl font-bold mb-2">Medical Conditions & Profile</h2>
+                  <p className="text-muted-foreground">
+                    Final details to personalize your experience
+                  </p>
+                </div>
+
+                <div className="space-y-4">
+                  {/* Phone */}
+                  <div>
+                    <Label htmlFor="phone" className="text-foreground">
+                      Phone Number (Optional)
+                    </Label>
+                    <Input
+                      id="phone"
+                      type="tel"
+                      placeholder="Enter 10 digit number"
+                      value={formData.phone}
+                      onChange={(e) => updateFormData("phone", e.target.value)}
+                      disabled={loading}
+                      className="bg-background border-input text-foreground mt-2"
+                    />
+                  </div>
+
+                  {/* Medical Conditions Search */}
+                  <div className="space-y-2">
+                    <Label className="text-foreground">Medical Conditions</Label>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search conditions (e.g. Diabetes, Asthma...)"
+                        className="pl-10 bg-background"
+                        onChange={(e) => {
+                          const query = e.target.value.toLowerCase();
+                          setSearchTerm(query);
+                        }}
+                        value={searchTerm}
+                      />
+                    </div>
+
+                    {/* Search Results */}
+                    {searchTerm && (
+                      <div className="mt-1 border border-border rounded-md bg-card shadow-lg max-h-40 overflow-y-auto z-20 sticky">
+                        {commonConditions
+                          .filter(c => c.toLowerCase().includes(searchTerm) && !selectedConditions.includes(c))
+                          .map(condition => (
+                            <div
+                              key={condition}
+                              className="px-4 py-2 hover:bg-muted cursor-pointer text-sm"
+                              onClick={() => {
+                                setSelectedConditions([...selectedConditions, condition]);
+                                setSearchTerm("");
+                              }}
+                            >
+                              {condition}
+                            </div>
+                          ))}
+                        {commonConditions.filter(c => c.toLowerCase().includes(searchTerm)).length === 0 && (
+                          <div className="px-4 py-2 text-sm text-muted-foreground italic">
+                            No matching conditions found
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Selected Conditions */}
+                    <div className="flex flex-wrap gap-2 mt-4">
+                      {selectedConditions.map(condition => (
+                        <Badge
+                          key={condition}
+                          variant="secondary"
+                          className="flex items-center gap-1 py-1 px-3 bg-primary/10 text-primary border-primary/20"
+                        >
+                          {condition}
+                          <X
+                            className="w-3 h-3 cursor-pointer hover:text-destructive"
+                            onClick={() => setSelectedConditions(selectedConditions.filter(c => c !== condition))}
+                          />
+                        </Badge>
+                      ))}
+                      {selectedConditions.length === 0 && (
+                        <p className="text-sm text-muted-foreground italic">No conditions selected</p>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             )}

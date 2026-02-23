@@ -22,6 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Plus, Trash2, AlertCircle, Search } from "lucide-react";
 import { Alert, AlertDescription } from "../components/ui/alert";
 import { tokenService, mealAPI, customFoodAPI, summaryAPI } from "../../services/api";
+import { useBadgeUnlock } from "../contexts/badge-context";
 
 interface DailySummary {
   total_calories: number;
@@ -65,6 +66,7 @@ export function NutritionPage() {
   const [dailySummary, setDailySummary] = useState<DailySummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const { checkNewBadges } = useBadgeUnlock();
 
   // Meal logging form states
   const [selectedMealType, setSelectedMealType] = useState("breakfast");
@@ -213,7 +215,12 @@ export function NutritionPage() {
           : defaultFats,
       };
 
-      await mealAPI.logMeal(mealData);
+      const response = await mealAPI.logMeal(mealData);
+
+      // Badge check
+      if (response.new_badges) {
+        checkNewBadges(response.new_badges);
+      }
 
       setSelectedFoodId("");
       setMealQuantity("");
@@ -433,8 +440,8 @@ export function NutritionPage() {
             </CardHeader>
             <CardContent>
               <div className={`text-3xl font-bold ${(dailySummary.net_calories || 0) > 0
-                  ? "text-orange-600"
-                  : "text-green-600"
+                ? "text-orange-600"
+                : "text-green-600"
                 }`}>
                 {dailySummary.net_calories}
               </div>
@@ -511,8 +518,8 @@ export function NutritionPage() {
                             <div className="font-medium text-sm flex items-center gap-2">
                               {food.food_name}
                               <span className={`text-xs px-2 py-0.5 rounded ${food.food_type === 'preset'
-                                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
-                                  : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                                ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                                : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
                                 }`}>
                                 {food.food_type === 'preset' ? 'Preset' : 'Custom'}
                               </span>
@@ -539,8 +546,8 @@ export function NutritionPage() {
                     <div className="font-medium text-sm flex items-center gap-2">
                       {getSelectedFoodDetails()?.food_name}
                       <span className={`text-xs px-2 py-0.5 rounded ${getSelectedFoodDetails()?.food_type === 'preset'
-                          ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
-                          : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                        ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                        : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
                         }`}>
                         {getSelectedFoodDetails()?.food_type === 'preset' ? 'Preset' : 'Custom'}
                       </span>
