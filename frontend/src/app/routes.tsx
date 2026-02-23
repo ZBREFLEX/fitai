@@ -55,44 +55,57 @@ export const router = createBrowserRouter([
             {
                 path: "nutrition",
                 Component: NutritionPage,
+                errorElement: <ErrorPage />,
             },
             {
                 path: "workout",
                 Component: WorkoutPage,
+                errorElement: <ErrorPage />,
             },
             {
                 path: "progress",
                 Component: ProgressPage,
+                errorElement: <ErrorPage />,
             },
             {
                 path: "gamification",
                 Component: GamificationPage,
+                errorElement: <ErrorPage />,
             },
             {
                 path: "recommendations",
                 Component: RecommendationsPage,
+                errorElement: <ErrorPage />,
             },
             {
                 path: "settings",
                 Component: SettingsPage,
+                errorElement: <ErrorPage />,
             },
             {
                 path: "admin",
                 Component: AdminDashboard,
+                errorElement: <ErrorPage />,
             },
             {
                 path: "admin/users",
                 Component: AdminUserManagement,
+                errorElement: <ErrorPage />,
             },
             {
                 path: "admin/cms",
                 Component: AdminCms,
+                errorElement: <ErrorPage />,
+            },
+            {
+                path: "*",
+                Component: ErrorPage,
             },
         ],
     },
     // Catch-all route for global 404s
     {
         path: "*",
-        element: <ErrorPage />,
+        Component: ErrorPage,
     }
 ]);
