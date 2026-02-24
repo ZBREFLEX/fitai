@@ -328,13 +328,10 @@ class PresetFood(models.Model):
     category = models.CharField(
         max_length=50,
         choices=[
-            ('protein', 'Protein'),
-            ('carbs', 'Carbs'),
-            ('vegetable', 'Vegetables'),
-            ('fruit', 'Fruits'),
-            ('beverage', 'Beverages'),
-            ('snack', 'Snacks'),
-            ('dairy', 'Dairy'),
+            ('breakfast', 'Breakfast'),
+            ('lunch', 'Lunch'),
+            ('dinner', 'Dinner'),
+            ('snack', 'Snack'),
         ],
         default='snack'
     )

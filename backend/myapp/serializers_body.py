@@ -174,7 +174,7 @@ class PresetFoodSerializer(serializers.ModelSerializer):
         model = PresetFood
         fields = [
             'id', 'food_name', 'calories', 'protein', 'carbs', 'fats', 'serving_size', 
-            'ingredients', 'ingredients_list', 'is_favorite', 'food_type', 
+            'category', 'ingredients', 'ingredients_list', 'is_favorite', 'food_type', 
             'is_diabetic_friendly', 'is_heart_healthy', 'is_gluten_free', 'is_vegan',
             'suitable_for', 'avoid_for', 'created_at'
         ]
@@ -258,11 +258,16 @@ class DailyStreakSerializer(serializers.ModelSerializer):
 
 class DailySummarySerializer(serializers.ModelSerializer):
     """Serializer for daily nutrition summary."""
+    recommended_calories = serializers.FloatField(read_only=True, required=False)
+    weight = serializers.FloatField(read_only=True, required=False)
+
+    target_macros = serializers.DictField(read_only=True, required=False)
+
     class Meta:
         model = DailySummary
         fields = ['id', 'date', 'total_calories', 'total_protein', 'total_carbs', 'total_fats', 
                   'total_calories_burned', 'net_calories', 'meals_count', 'workouts_count', 'tdee', 
-                  'created_at', 'updated_at']
+                  'recommended_calories', 'target_macros', 'weight', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 
@@ -277,13 +282,19 @@ class UserAllergySerializer(serializers.ModelSerializer):
 
 class PresetWorkoutSerializer(serializers.ModelSerializer):
     """Serializer for preset workouts."""
+    estimated_calories = serializers.SerializerMethodField()
+
     class Meta:
         model = PresetWorkout
         fields = [
             'id', 'name', 'workout_type', 'duration_minutes', 'intensity', 
             'description', 'benefits', 'target_goal', 'is_low_impact', 
-            'requires_equipment', 'body_part', 'suitable_for', 'avoid_for', 'created_at'
+            'requires_equipment', 'body_part', 'suitable_for', 'avoid_for', 
+            'estimated_calories', 'created_at'
         ]
+
+    def get_estimated_calories(self, obj):
+        return obj.calculate_calories()
 
 class CustomWorkoutSerializer(serializers.ModelSerializer):
     """Serializer for user custom workouts."""

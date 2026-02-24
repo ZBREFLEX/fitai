@@ -4,7 +4,7 @@ import {
   CardHeader,
   CardTitle,
 } from "../components/ui/card";
-import { Activity, TrendingUp, Target, Flame, Lightbulb, Scale, Ruler, Settings, RefreshCw } from "lucide-react";
+import { Activity, TrendingUp, Target, Flame, Lightbulb, Scale, Ruler, Settings, RefreshCw, Brain } from "lucide-react";
 import {
   LineChart,
   Line,
@@ -30,6 +30,12 @@ interface DailySummary {
   total_fats: number;
   total_calories_burned: number;
   tdee: number;
+  recommended_calories?: number;
+  target_macros?: {
+    protein: number;
+    carbs: number;
+    fats: number;
+  };
   net_calories: number;
   meals_count: number;
   workouts_count: number;
@@ -94,10 +100,11 @@ export function DashboardHome() {
           setQuickHeight(profile.profile.latest_measurement.height.toString());
         }
 
-        // Fetch today's summary and streak
-        const [todaysummary, streakData] = await Promise.all([
+        // Fetch today's summary, streak, and weekly stats
+        const [todaysummary, streakData, weeklyRes] = await Promise.all([
           summaryAPI.getDailySummary(),
           summaryAPI.getStreak(),
+          summaryAPI.getWeeklyStats(),
         ]);
 
         setDailySummary(todaysummary);
@@ -118,31 +125,15 @@ export function DashboardHome() {
           setRecommendationsLoading(false);
         }
 
-        // Fetch last 7 days of data for weekly chart
-        const weekData = [];
-        const calorieTarget = todaysummary?.tdee || 2000;
-
-        for (let i = 6; i >= 0; i--) {
-          const date = new Date();
-          date.setDate(date.getDate() - i);
-          const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-
-          try {
-            const summary = await summaryAPI.getDailySummary(dateStr);
-            weekData.push({
-              day: date.toLocaleDateString("en-US", { weekday: "short" }),
-              calories: summary.total_calories,
-              target: calorieTarget,
-            });
-          } catch (e) {
-            weekData.push({
-              day: date.toLocaleDateString("en-US", { weekday: "short" }),
-              calories: 0,
-              target: calorieTarget,
-            });
-          }
+        // Map weekly stats for chart
+        if (weeklyRes?.history) {
+          const chartData = weeklyRes.history.map((h: any) => ({
+            day: h.day,
+            calories: h.total_calories,
+            target: h.recommended_calories || h.tdee || 2000,
+          }));
+          setWeeklyData(chartData);
         }
-        setWeeklyData(weekData);
       } catch (err) {
         console.error("Failed to load dashboard data:", err);
         setError("Failed to load dashboard data");
@@ -251,11 +242,16 @@ export function DashboardHome() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{dailySummary?.total_calories || 0} kcal</div>
-            <p className="text-xs text-muted-foreground mt-1">Goal: {dailySummary?.tdee || 2000} kcal</p>
+            <div className="flex items-center gap-1.5 mt-1">
+              <p className="text-xs text-muted-foreground">Goal: {(dailySummary as any)?.recommended_calories || dailySummary?.tdee || 2000} kcal</p>
+              <div className="flex items-center gap-0.5 bg-primary/10 text-primary px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider">
+                <Brain className="w-2 h-2" /> FitAI Recommended
+              </div>
+            </div>
             <div className="h-1.5 bg-secondary rounded-full overflow-hidden mt-4">
               <div
                 className="h-full bg-primary"
-                style={{ width: `${Math.min(((dailySummary?.total_calories || 0) / (dailySummary?.tdee || 2000)) * 100, 100)}%` }}
+                style={{ width: `${Math.min(((dailySummary?.total_calories || 0) / ((dailySummary as any)?.recommended_calories || dailySummary?.tdee || 2000)) * 100, 100)}%` }}
               />
             </div>
           </CardContent>
@@ -367,14 +363,14 @@ export function DashboardHome() {
             </CardHeader>
             <CardContent className="space-y-4">
               {[
-                { label: "P", current: dailySummary?.total_protein || 0, goal: 150, color: "bg-blue-500" },
-                { label: "C", current: dailySummary?.total_carbs || 0, goal: 250, color: "bg-green-500" },
-                { label: "F", current: dailySummary?.total_fats || 0, goal: 80, color: "bg-orange-500" },
+                { label: "P", current: dailySummary?.total_protein || 0, goal: dailySummary?.target_macros?.protein || 150, color: "bg-blue-500" },
+                { label: "C", current: dailySummary?.total_carbs || 0, goal: dailySummary?.target_macros?.carbs || 250, color: "bg-green-500" },
+                { label: "F", current: dailySummary?.total_fats || 0, goal: dailySummary?.target_macros?.fats || 80, color: "bg-orange-500" },
               ].map((macro) => (
                 <div key={macro.label} className="space-y-1">
                   <div className="flex justify-between text-[10px] font-bold">
                     <span>{macro.label}</span>
-                    <span>{macro.current}g / {macro.goal}g</span>
+                    <span>{Math.round(macro.current)}g / {Math.round(macro.goal)}g</span>
                   </div>
                   <div className="h-1.5 bg-secondary/30 rounded-full overflow-hidden">
                     <div className={`h-full ${macro.color}`} style={{ width: `${Math.min((macro.current / macro.goal) * 100, 100)}%` }} />
@@ -426,14 +422,14 @@ export function DashboardHome() {
           <CardContent>
             <div className="space-y-5">
               {[
-                { label: "Protein", current: dailySummary?.total_protein || 0, goal: 150, color: "bg-blue-500" },
-                { label: "Carbs", current: dailySummary?.total_carbs || 0, goal: 250, color: "bg-green-500" },
-                { label: "Fats", current: dailySummary?.total_fats || 0, goal: 80, color: "bg-orange-500" },
+                { label: "Protein", current: dailySummary?.total_protein || 0, goal: dailySummary?.target_macros?.protein || 150, color: "bg-blue-500" },
+                { label: "Carbs", current: dailySummary?.total_carbs || 0, goal: dailySummary?.target_macros?.carbs || 250, color: "bg-green-500" },
+                { label: "Fats", current: dailySummary?.total_fats || 0, goal: dailySummary?.target_macros?.fats || 80, color: "bg-orange-500" },
               ].map((macro) => (
                 <div key={macro.label}>
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-sm font-medium text-muted-foreground">{macro.label}</span>
-                    <span className="text-sm font-bold text-foreground">{macro.current}g / {macro.goal}g</span>
+                    <span className="text-sm font-bold text-foreground">{Math.round(macro.current)}g / {Math.round(macro.goal)}g</span>
                   </div>
                   <div className="h-2 bg-secondary/30 rounded-full overflow-hidden">
                     <div

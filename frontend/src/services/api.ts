@@ -1,4 +1,4 @@
-const API_URL = "http://localhost:8000/api";
+const API_URL = "http://127.0.0.1:8000/api";
 
 // Types
 export interface LoginCredentials {
@@ -668,6 +668,20 @@ export const summaryAPI = {
         });
 
         if (!response.ok) throw new Error("Failed to fetch streak");
+        return await response.json();
+    },
+
+    getWeeklyStats: async () => {
+        const accessToken = tokenService.getAccessToken();
+        if (!accessToken) throw new Error("Not authenticated");
+
+        const response = await fetch(`${API_URL}/weekly-stats/`, {
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+            },
+        });
+
+        if (!response.ok) throw new Error("Failed to fetch weekly stats");
         return await response.json();
     },
 };

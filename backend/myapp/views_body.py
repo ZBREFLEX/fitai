@@ -503,13 +503,50 @@ def update_user_streak(user):
 @authentication_classes([JWTAuthentication])
 @permission_classes([IsAuthenticated])
 def daily_summary(request):
-    """Get daily summary for a specific date."""
-    date = request.query_params.get('date', timezone.now().date())
+    """Get daily summary for a specific date with AI calorie estimation."""
+    date_str = request.query_params.get('date')
+    if date_str:
+        try:
+            date = timezone.datetime.strptime(date_str, '%Y-%m-%d').date()
+        except ValueError:
+            date = timezone.now().date()
+    else:
+        date = timezone.now().date()
     
-    # Get latest measurement for TDEE
+    # Get latest measurement for TDEE and health stats
     latest_measurement = BodyMeasurement.objects.filter(user=request.user).order_by('-date_recorded').first()
     tdee = int(latest_measurement.tdee) if latest_measurement else 2000
+    current_weight = latest_measurement.weight if latest_measurement else 0
     
+    # --- FitAI Dynamic Nutrition Engine (v2) ---
+    # Not just math: Dynamic calculation based on goal, gender, and metrics
+    recommended_calories = tdee
+    protein_ratio, carbs_ratio, fats_ratio = 0.25, 0.45, 0.30 # Default balance
+    
+    try:
+        goal = Goal.objects.get(user=request.user)
+        if goal.goal_type == 'lose_weight':
+            # Sustainable 15% deficit
+            recommended_calories = int(tdee * 0.85)
+            protein_ratio, carbs_ratio, fats_ratio = 0.35, 0.35, 0.30 # High protein for satiety
+        elif goal.goal_type == 'gain_muscle':
+            # Clean bulk: 10% surplus
+            recommended_calories = int(tdee * 1.1)
+            protein_ratio, carbs_ratio, fats_ratio = 0.30, 0.45, 0.25 # More carbs for performance
+        
+        # Safety minimums to prevent metabolic damage
+        gender = latest_measurement.gender if latest_measurement else 'male'
+        min_allowed = 1500 if gender == 'male' else 1200
+        if recommended_calories < min_allowed:
+            recommended_calories = min_allowed
+    except Goal.DoesNotExist:
+        pass
+    
+    # Calculate target macros (in grams)
+    target_protein = int((recommended_calories * protein_ratio) / 4)
+    target_carbs = int((recommended_calories * carbs_ratio) / 4)
+    target_fats = int((recommended_calories * fats_ratio) / 9)
+
     # Get meals for the date
     meals = MealEntry.objects.filter(user=request.user, date=date)
     total_calories = sum(m.calories for m in meals)
@@ -534,6 +571,13 @@ def daily_summary(request):
         'total_fats': total_fats,
         'total_calories_burned': total_calories_burned,
         'tdee': tdee,
+        'recommended_calories': recommended_calories,
+        'target_macros': {
+            'protein': target_protein,
+            'carbs': target_carbs,
+            'fats': target_fats
+        },
+        'weight': current_weight,
         'net_calories': net_calories,
         'meals_count': meals_count,
         'workouts_count': workouts_count,
@@ -541,6 +585,76 @@ def daily_summary(request):
     
     serializer = DailySummarySerializer(data)
     return Response(serializer.data)
+
+
+@api_view(['GET'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticated])
+def weekly_stats(request):
+    """
+    FitAI Engine: Get analytics for the last 7 days.
+    Consolidates data into one request to fix dashboard performance.
+    """
+    days = 7
+    end_date = timezone.now().date()
+    start_date = end_date - timedelta(days=days-1)
+    
+    # Fetch all meals and workouts in the range at once to be efficient
+    meals_in_range = MealEntry.objects.filter(
+        user=request.user, 
+        date__range=[start_date, end_date]
+    )
+    workouts_in_range = WorkoutEntry.objects.filter(
+        user=request.user, 
+        date__range=[start_date, end_date]
+    )
+    
+    # Get user goal for recommendations
+    latest_measurement = BodyMeasurement.objects.filter(user=request.user).order_by('-date_recorded').first()
+    tdee = int(latest_measurement.tdee) if latest_measurement else 2000
+    
+    recommended_calories = tdee
+    try:
+        goal = Goal.objects.get(user=request.user)
+        if goal.goal_type == 'lose_weight':
+            recommended_calories = int(tdee * 0.8)
+        elif goal.goal_type == 'gain_muscle':
+            recommended_calories = int(tdee * 1.1)
+        
+        gender = latest_measurement.gender if latest_measurement else 'male'
+        min_allowed = 1500 if gender == 'male' else 1200
+        recommended_calories = max(recommended_calories, min_allowed)
+    except Goal.DoesNotExist:
+        pass
+
+    history = []
+    
+    for i in range(days):
+        day_date = start_date + timedelta(days=i)
+        
+        day_meals = [m for m in meals_in_range if m.date == day_date]
+        day_workouts = [w for w in workouts_in_range if w.date == day_date]
+        
+        total_cals = sum(m.calories for m in day_meals)
+        burned_cals = sum(w.calories_burned for w in day_workouts)
+        
+        history.append({
+            'date': day_date,
+            'day': day_date.strftime('%a'),
+            'total_calories': total_cals,
+            'total_calories_burned': burned_cals,
+            'recommended_calories': recommended_calories,
+            'tdee': tdee
+        })
+        
+    return Response({
+        'history': history,
+        'summary': {
+            'avg_calories': sum(h['total_calories'] for h in history) / days,
+            'total_workouts': workouts_in_range.count(),
+            'total_meals': meals_in_range.count()
+        }
+    })
 
 
 @api_view(['GET'])
@@ -641,10 +755,12 @@ def meal_recommendations(request):
     allergies_list = [str(a).lower() for a in allergies]
     
     # Profile-based flags
-    is_diabetic = any('diabetes' in c for c in conditions)
-    has_hypertension = any('hypertension' in c or 'heart' in c for c in conditions)
+    # Profile-based flags with enhanced synonym detection
+    is_diabetic = any(s in c for c in conditions for s in ['diabetes', 'diabetic', 'blood sugar'])
+    has_hypertension = any(s in c for c in conditions for s in ['hypertension', 'blood pressure', 'heart', 'cardiac'])
     is_vegan_user = any('vegan' in c for c in conditions)
-    is_gluten_free_user = any('gluten-free' in c or 'gluten sensitivity' in c for c in conditions)
+    is_gluten_free_user = any(s in c for c in conditions for s in ['gluten', 'celiac'])
+    has_pcos = any('pcos' in c for c in conditions)
 
     # AI Filtering Logic
     preset_foods = PresetFood.objects.all()
@@ -677,10 +793,16 @@ def meal_recommendations(request):
         avoid_tags = [t.strip().lower() for t in (food.avoid_for or "").split(',') if t.strip()]
         
         for cond in conditions:
-            if cond in suitable_tags:
-                food_score += 40 # Scientific match boost
-            if cond in avoid_tags:
-                food_score -= 100 # Safety penalty
+            # Direct tag matching
+            if any(cond in t or t in cond for t in suitable_tags):
+                food_score += 60 # Priority boost for admin-curated medical matching
+            if any(cond in t or t in cond for t in avoid_tags):
+                food_score -= 500 # Strict safety penalty
+            
+            # Specific logic for common conditions
+            if is_diabetic and 'diabetes' in suitable_tags: food_score += 20
+            if has_hypertension and 'hypertension' in suitable_tags: food_score += 20
+            if has_pcos and 'pcos' in suitable_tags: food_score += 20
         
         # 5. Variety Filter (Anti-Boredom)
         recent_meals = MealEntry.objects.filter(user=request.user).order_by('-date')[:15]
@@ -753,8 +875,8 @@ def workout_recommendations(request):
     
     conditions = [c.strip().lower() for c in (profile.medical_conditions or "").split(',')]
     
-    # Profile flags
-    is_low_impact_needed = any(c in ['asthma', 'arthritis', 'heart disease', 'hypertension'] for c in conditions)
+    # Profile flags with synonym detection
+    is_low_impact_needed = any(s in c for c in conditions for s in ['asthma', 'arthritis', 'joint', 'knee', 'heart', 'hypertension', 'cardiac'])
     
     # --- Intelligent Rest & Fatigue Logic ---
     today = timezone.now().date()
@@ -873,10 +995,10 @@ def workout_recommendations(request):
         avoid_tags = [t.strip().lower() for t in (getattr(w, 'avoid_for', '') or "").split(',') if t.strip()]
         
         for cond in conditions:
-            if cond in suitable_tags:
-                score += 40 # Scientific match boost
-            if cond in avoid_tags:
-                score -= 100 # Safety penalty (virtually hides it)
+            if any(cond in t or t in cond for t in suitable_tags):
+                score += 70 # Admin preference boost
+            if any(cond in t or t in cond for t in avoid_tags):
+                score -= 500 # Strict safety penalty
 
         # 5. Variety Filter (Anti-Boredom)
         recent_logs = WorkoutEntry.objects.filter(user=request.user).order_by('-date')[:15]

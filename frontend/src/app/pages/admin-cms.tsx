@@ -19,7 +19,9 @@ import {
     Zap,
     Leaf,
     Heart,
-    Eye
+    Eye,
+    Search,
+    X
 } from "lucide-react";
 import { tokenService } from "../../services/api";
 import { Alert, AlertDescription } from "../components/ui/alert";
@@ -58,10 +60,22 @@ const adminAPI = {
     }
 };
 
+const commonConditions = [
+    "Diabetes", "Hypertension", "Asthma", "Cholesterol", "Arthritis",
+    "PCOS", "Thyroid", "Anemia", "Depression", "Anxiety",
+    "Back Pain", "Knee Injury", "Heart Disease", "Weight Loss", "Muscle Gain", "Endurance"
+];
+
 export function AdminCms() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
+
+    // Searchable tag state
+    const [foodSuitableSearch, setFoodSuitableSearch] = useState("");
+    const [foodAvoidSearch, setFoodAvoidSearch] = useState("");
+    const [workoutSuitableSearch, setWorkoutSuitableSearch] = useState("");
+    const [workoutAvoidSearch, setWorkoutAvoidSearch] = useState("");
 
     const [foodForm, setFoodForm] = useState({
         food_name: "",
@@ -204,13 +218,10 @@ export function AdminCms() {
                                         value={foodForm.category}
                                         onChange={e => setFoodForm({ ...foodForm, category: e.target.value })}
                                     >
-                                        <option value="protein">PROTEIN ASSET</option>
-                                        <option value="carbs">CARBOHYDRATE</option>
-                                        <option value="vegetable">VEGETABLE</option>
-                                        <option value="fruit">FRUIT</option>
-                                        <option value="beverage">BEVERAGE</option>
-                                        <option value="snack">SNACK/FUEL</option>
-                                        <option value="dairy">DAIRY SYSTEM</option>
+                                        <option value="breakfast">BREAKFAST</option>
+                                        <option value="lunch">LUNCH</option>
+                                        <option value="dinner">DINNER</option>
+                                        <option value="snack">SNACK</option>
                                     </select>
                                 </div>
                             </div>
@@ -280,15 +291,88 @@ export function AdminCms() {
                                 </div>
                             </div>
 
-                            {/* Medical Logic */}
+                            {/* Medical Logic with Searchable Chips */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                                <div className="space-y-2">
-                                    <Label className="text-[10px] font-black opacity-60 uppercase tracking-widest">Target Conditions (Suitable)</Label>
-                                    <Input placeholder="e.g. PCOS, Hypothyroidism" className="h-10 bg-secondary/20 border-transparent font-bold text-xs" value={foodForm.suitable_for} onChange={e => setFoodForm({ ...foodForm, suitable_for: e.target.value })} />
+                                <div className="space-y-4">
+                                    <Label className="text-[10px] font-black opacity-60 uppercase tracking-widest text-primary">Target Conditions (Suitable)</Label>
+                                    <div className="relative">
+                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                                        <Input
+                                            placeholder="Search and add conditions..."
+                                            className="h-10 pl-9 bg-secondary/20 border-transparent font-bold text-xs"
+                                            value={foodSuitableSearch}
+                                            onChange={e => setFoodSuitableSearch(e.target.value)}
+                                        />
+                                        {foodSuitableSearch && (
+                                            <div className="absolute z-50 w-full mt-1 bg-card border border-border rounded-lg shadow-xl max-h-40 overflow-y-auto">
+                                                {commonConditions.filter(c => c.toLowerCase().includes(foodSuitableSearch.toLowerCase()) && !foodForm.suitable_for.includes(c)).map(c => (
+                                                    <div
+                                                        key={c}
+                                                        className="px-3 py-2 hover:bg-primary/10 cursor-pointer text-xs font-bold"
+                                                        onClick={() => {
+                                                            const current = foodForm.suitable_for ? foodForm.suitable_for.split(',').map(i => i.trim()).filter(Boolean) : [];
+                                                            setFoodForm({ ...foodForm, suitable_for: [...current, c].join(', ') });
+                                                            setFoodSuitableSearch("");
+                                                        }}
+                                                    >
+                                                        {c}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {foodForm.suitable_for.split(',').map(i => i.trim()).filter(Boolean).map(tag => (
+                                            <Badge key={tag} variant="secondary" className="bg-primary/10 text-primary border-primary/20 gap-1 pr-1">
+                                                {tag}
+                                                <X className="w-3 h-3 cursor-pointer hover:text-destructive" onClick={() => {
+                                                    const tags = foodForm.suitable_for.split(',').map(i => i.trim()).filter(t => t !== tag);
+                                                    setFoodForm({ ...foodForm, suitable_for: tags.join(', ') });
+                                                }} />
+                                            </Badge>
+                                        ))}
+                                    </div>
                                 </div>
-                                <div className="space-y-2">
-                                    <Label className="text-[10px] font-black opacity-60 uppercase tracking-widest">Safety Warning (Avoid for)</Label>
-                                    <Input placeholder="e.g. Chronic Kidney Disease" className="h-10 bg-red-500/[0.05] border-transparent font-bold text-xs text-red-700" value={foodForm.avoid_for} onChange={e => setFoodForm({ ...foodForm, avoid_for: e.target.value })} />
+
+                                <div className="space-y-4">
+                                    <Label className="text-[10px] font-black opacity-60 uppercase tracking-widest text-red-600">Safety Warning (Avoid for)</Label>
+                                    <div className="relative">
+                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                                        <Input
+                                            placeholder="Search and add contraindications..."
+                                            className="h-10 pl-9 bg-red-500/[0.05] border-transparent font-bold text-xs text-red-700"
+                                            value={foodAvoidSearch}
+                                            onChange={e => setFoodAvoidSearch(e.target.value)}
+                                        />
+                                        {foodAvoidSearch && (
+                                            <div className="absolute z-50 w-full mt-1 bg-card border border-border rounded-lg shadow-xl max-h-40 overflow-y-auto">
+                                                {commonConditions.filter(c => c.toLowerCase().includes(foodAvoidSearch.toLowerCase()) && !foodForm.avoid_for.includes(c)).map(c => (
+                                                    <div
+                                                        key={c}
+                                                        className="px-3 py-2 hover:bg-red-500/10 cursor-pointer text-xs font-bold text-red-700"
+                                                        onClick={() => {
+                                                            const current = foodForm.avoid_for ? foodForm.avoid_for.split(',').map(i => i.trim()).filter(Boolean) : [];
+                                                            setFoodForm({ ...foodForm, avoid_for: [...current, c].join(', ') });
+                                                            setFoodAvoidSearch("");
+                                                        }}
+                                                    >
+                                                        {c}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {foodForm.avoid_for.split(',').map(i => i.trim()).filter(Boolean).map(tag => (
+                                            <Badge key={tag} variant="secondary" className="bg-red-500/10 text-red-700 border-red-500/20 gap-1 pr-1">
+                                                {tag}
+                                                <X className="w-3 h-3 cursor-pointer hover:text-destructive" onClick={() => {
+                                                    const tags = foodForm.avoid_for.split(',').map(i => i.trim()).filter(t => t !== tag);
+                                                    setFoodForm({ ...foodForm, avoid_for: tags.join(', ') });
+                                                }} />
+                                            </Badge>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
 
@@ -358,9 +442,47 @@ export function AdminCms() {
                                         <option value="intense">INTENSE ZONE</option>
                                     </select>
                                 </div>
-                                <div className="space-y-1.5">
+                                <div className="space-y-4">
                                     <Label className="text-[10px] font-black opacity-60 flex items-center gap-1.5 uppercase tracking-widest"><Target className="w-3 h-3 text-blue-500" /> Target Part</Label>
-                                    <Input placeholder="e.g. Full Body" value={workoutForm.body_part} onChange={e => setWorkoutForm({ ...workoutForm, body_part: e.target.value })} className="h-10 font-black border-blue-500/20" />
+                                    <select
+                                        className="w-full h-10 px-3 border border-blue-500/20 rounded-lg font-black text-xs bg-background"
+                                        value={workoutForm.body_part}
+                                        onChange={e => setWorkoutForm({ ...workoutForm, body_part: e.target.value })}
+                                        required
+                                    >
+                                        <option value="">Select Part</option>
+                                        <option value="Chest">Chest</option>
+                                        <option value="Back">Back</option>
+                                        <option value="Legs">Legs</option>
+                                        <option value="Shoulders">Shoulders</option>
+                                        <option value="Arms">Arms</option>
+                                        <option value="Abs">Abs</option>
+                                        <option value="Cardio">Cardio</option>
+                                        <option value="HIIT">HIIT</option>
+                                        <option value="Full Body">Full Body</option>
+                                    </select>
+
+                                    {/* LIVE CALORIE ESTIMATION DISPLAY */}
+                                    <div className="p-3 bg-orange-500/10 border border-orange-500/20 rounded-xl">
+                                        <div className="text-[9px] font-black text-orange-600 uppercase tracking-widest mb-1">Live Burn Projection</div>
+                                        <div className="flex items-baseline gap-1">
+                                            <span className="text-2xl font-black text-orange-700 italic">
+                                                {(() => {
+                                                    const baseCal: Record<string, number> = {
+                                                        'cardio': 8, 'strength': 6, 'flexibility': 3, 'sports': 7,
+                                                        'running': 12, 'hiit': 14
+                                                    };
+                                                    const intensityMult: Record<string, number> = {
+                                                        'light': 0.8, 'moderate': 1.0, 'intense': 1.3
+                                                    };
+                                                    const base = baseCal[workoutForm.workout_type] || 5;
+                                                    const mult = intensityMult[workoutForm.intensity] || 1.0;
+                                                    return Math.round(base * (parseInt(workoutForm.duration_minutes) || 0) * mult);
+                                                })()}
+                                            </span>
+                                            <span className="text-[10px] font-bold text-orange-600">KCAL</span>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
@@ -402,25 +524,102 @@ export function AdminCms() {
                                 </div>
                             </div>
 
-                            {/* Medical Logic */}
+                            {/* Training Medical Logic with Searchable Chips */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                                <div className="space-y-2">
-                                    <Label className="text-[10px] font-black opacity-60 uppercase tracking-widest text-primary">Target Goal</Label>
-                                    <select
-                                        className="w-full h-10 px-3 border border-primary/20 rounded-lg font-black text-xs bg-background"
-                                        value={workoutForm.target_goal}
-                                        onChange={e => setWorkoutForm({ ...workoutForm, target_goal: e.target.value })}
-                                    >
-                                        <option value="maintain">MAINTENANCE</option>
-                                        <option value="lose_weight">WEIGHT LOSS</option>
-                                        <option value="gain_muscle">MUSCLE HYPERTROPHY</option>
-                                    </select>
+                                <div className="space-y-4">
+                                    <Label className="text-[10px] font-black opacity-60 uppercase tracking-widest text-primary">Target Goal & Suitability</Label>
+                                    <div className="flex flex-col gap-4">
+                                        <select
+                                            className="w-full h-10 px-3 border border-primary/20 rounded-lg font-black text-xs bg-background"
+                                            value={workoutForm.target_goal}
+                                            onChange={e => setWorkoutForm({ ...workoutForm, target_goal: e.target.value })}
+                                        >
+                                            <option value="maintain">MAINTENANCE</option>
+                                            <option value="lose_weight">WEIGHT LOSS</option>
+                                            <option value="gain_muscle">MUSCLE HYPERTROPHY</option>
+                                        </select>
+
+                                        <div className="relative">
+                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                                            <Input
+                                                placeholder="Additional medical conditions..."
+                                                className="h-10 pl-9 bg-secondary/10 border-transparent font-bold text-xs"
+                                                value={workoutSuitableSearch}
+                                                onChange={e => setWorkoutSuitableSearch(e.target.value)}
+                                            />
+                                            {workoutSuitableSearch && (
+                                                <div className="absolute z-50 w-full mt-1 bg-card border border-border rounded-lg shadow-xl max-h-40 overflow-y-auto">
+                                                    {commonConditions.filter(c => c.toLowerCase().includes(workoutSuitableSearch.toLowerCase()) && !workoutForm.suitable_for.includes(c)).map(c => (
+                                                        <div
+                                                            key={c}
+                                                            className="px-3 py-2 hover:bg-primary/10 cursor-pointer text-xs font-bold"
+                                                            onClick={() => {
+                                                                const current = workoutForm.suitable_for ? workoutForm.suitable_for.split(',').map(i => i.trim()).filter(Boolean) : [];
+                                                                setWorkoutForm({ ...workoutForm, suitable_for: [...current, c].join(', ') });
+                                                                setWorkoutSuitableSearch("");
+                                                            }}
+                                                        >
+                                                            {c}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex flex-wrap gap-2">
+                                            {workoutForm.suitable_for.split(',').map(i => i.trim()).filter(Boolean).map(tag => (
+                                                <Badge key={tag} variant="secondary" className="bg-primary/10 text-primary border-primary/20 gap-1 pr-1">
+                                                    {tag}
+                                                    <X className="w-3 h-3 cursor-pointer hover:text-destructive" onClick={() => {
+                                                        const tags = workoutForm.suitable_for.split(',').map(i => i.trim()).filter(t => t !== tag);
+                                                        setWorkoutForm({ ...workoutForm, suitable_for: tags.join(', ') });
+                                                    }} />
+                                                </Badge>
+                                            ))}
+                                        </div>
+                                    </div>
                                 </div>
-                                <div className="space-y-2">
-                                    <Label className="text-[10px] font-black opacity-60 uppercase tracking-widest italic flex items-center gap-2 underline decoration-red-500 text-red-700">
-                                        <ShieldAlert className="w-3 h-3" /> Safety Contradictions
+
+                                <div className="space-y-4">
+                                    <Label className="text-[10px] font-black opacity-60 uppercase tracking-widest italic flex items-center gap-2 text-red-700">
+                                        <ShieldAlert className="w-3 h-3 text-red-500" /> Safety Contradictions (Avoid)
                                     </Label>
-                                    <Input placeholder="e.g. vertigo, heart meds" className="h-10 bg-red-500/[0.05] border-transparent font-black text-xs text-red-700" value={workoutForm.avoid_for} onChange={e => setWorkoutForm({ ...workoutForm, avoid_for: e.target.value })} />
+                                    <div className="relative">
+                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                                        <Input
+                                            placeholder="Who should NOT do this?"
+                                            className="h-10 pl-9 bg-red-500/[0.05] border-transparent font-black text-xs text-red-700"
+                                            value={workoutAvoidSearch}
+                                            onChange={e => setWorkoutAvoidSearch(e.target.value)}
+                                        />
+                                        {workoutAvoidSearch && (
+                                            <div className="absolute z-50 w-full mt-1 bg-card border border-border rounded-lg shadow-xl max-h-40 overflow-y-auto">
+                                                {commonConditions.filter(c => c.toLowerCase().includes(workoutAvoidSearch.toLowerCase()) && !workoutForm.avoid_for.includes(c)).map(c => (
+                                                    <div
+                                                        key={c}
+                                                        className="px-3 py-2 hover:bg-red-500/10 cursor-pointer text-xs font-bold text-red-700"
+                                                        onClick={() => {
+                                                            const current = workoutForm.avoid_for ? workoutForm.avoid_for.split(',').map(i => i.trim()).filter(Boolean) : [];
+                                                            setWorkoutForm({ ...workoutForm, avoid_for: [...current, c].join(', ') });
+                                                            setWorkoutAvoidSearch("");
+                                                        }}
+                                                    >
+                                                        {c}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {workoutForm.avoid_for.split(',').map(i => i.trim()).filter(Boolean).map(tag => (
+                                            <Badge key={tag} variant="secondary" className="bg-red-500/10 text-red-700 border-red-500/20 gap-1 pr-1">
+                                                {tag}
+                                                <X className="w-3 h-3 cursor-pointer hover:text-destructive" onClick={() => {
+                                                    const tags = workoutForm.avoid_for.split(',').map(i => i.trim()).filter(t => t !== tag);
+                                                    setWorkoutForm({ ...workoutForm, avoid_for: tags.join(', ') });
+                                                }} />
+                                            </Badge>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
 

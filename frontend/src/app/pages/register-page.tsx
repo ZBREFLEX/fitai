@@ -76,9 +76,10 @@ export function RegisterPage() {
         password: formData.password,
         confirmPassword: formData.confirmPassword,
       });
-      // After registration, go to onboarding for body measurements
+      console.log("Registration successful, tokens set. Navigating to onboarding...");
       navigate("/onboarding");
     } catch (err) {
+      console.error("Registration failed:", err);
       const error = err instanceof Error ? err.message : "Registration failed";
 
       // Parse field-specific errors (e.g., "phone: Phone must be exactly 10 digits | email: Email already exists")

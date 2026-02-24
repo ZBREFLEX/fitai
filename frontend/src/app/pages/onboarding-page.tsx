@@ -41,6 +41,31 @@ export function OnboardingPage() {
   }, [navigate]);
 
   const handleNext = async () => {
+    setError("");
+
+    if (currentStep === 1) {
+      if (!formData.height || !formData.weight || !formData.age || !formData.gender || !formData.activityLevel) {
+        setError("Please fill in all physical measurements to continue.");
+        return;
+      }
+      // Basic range validation
+      if (parseInt(formData.age) < 10) {
+        setError("Age must be at least 10 years.");
+        return;
+      }
+      if (parseFloat(formData.height) < 50 || parseFloat(formData.height) > 300) {
+        setError("Please enter a valid height between 50 and 300 cm.");
+        return;
+      }
+    }
+
+    if (currentStep === 2) {
+      if (!formData.fitnessGoal) {
+        setError("Please select a fitness goal.");
+        return;
+      }
+    }
+
     if (currentStep < totalSteps) {
       setCurrentStep(currentStep + 1);
     } else {
@@ -264,7 +289,6 @@ export function OnboardingPage() {
                         <option value="">Select gender</option>
                         <option value="male">Male</option>
                         <option value="female">Female</option>
-                        <option value="other">Other</option>
                       </select>
                     </div>
                   </div>
@@ -292,10 +316,10 @@ export function OnboardingPage() {
                       <option value="moderate">
                         Moderately Active - Exercise 3-5 times per week
                       </option>
-                      <option value="very">
+                      <option value="active">
                         Very Active - Exercise 6-7 times per week
                       </option>
-                      <option value="extreme">
+                      <option value="very_active">
                         Extremely Active - Intense exercise daily
                       </option>
                     </select>

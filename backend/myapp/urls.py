@@ -40,6 +40,7 @@ urlpatterns = [
     
     # Daily summary and streak
     path('daily-summary/', views_body.daily_summary, name='daily_summary'),
+    path('weekly-stats/', views_body.weekly_stats, name='weekly_stats'),
     path('streak/', views_body.user_streak, name='user_streak'),
     
     # Allergies

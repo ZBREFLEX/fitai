@@ -1,5 +1,5 @@
 import { Outlet, useNavigate, useLocation } from 'react-router';
-import { Brain, Home, Utensils, Dumbbell, TrendingUp, Award, LogOut, Moon, Sun, Menu, X, Lightbulb, Settings as SettingsIcon, ShieldAlert } from 'lucide-react';
+import { Brain, Home, Utensils, Dumbbell, TrendingUp, Award, LogOut, Moon, Sun, Menu, X, Lightbulb, Settings as SettingsIcon, ShieldAlert, Sparkles } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { useTheme } from '../contexts/theme-context';
 import { useState, useEffect } from 'react';
@@ -36,7 +36,14 @@ export function DashboardLayout() {
     }
   };
 
-  const menuItems = [
+  const isAdminPath = location.pathname.includes('/dashboard/admin');
+
+  const menuItems = isAdminPath ? [
+    { icon: ShieldAlert, label: 'System Overview', path: '/dashboard/admin' },
+    { icon: Menu, label: 'User Management', path: '/dashboard/admin/users' },
+    { icon: Sparkles, label: 'Content Engine', path: '/dashboard/admin/cms' },
+    { icon: Home, label: 'Exit Admin Portal', path: '/dashboard' },
+  ] : [
     { icon: Home, label: 'Dashboard', path: '/dashboard' },
     { icon: Utensils, label: 'Nutrition', path: '/dashboard/nutrition' },
     { icon: Dumbbell, label: 'Workout', path: '/dashboard/workout' },
@@ -46,8 +53,8 @@ export function DashboardLayout() {
     { icon: SettingsIcon, label: 'Settings', path: '/dashboard/settings' },
   ];
 
-  // Add Admin link if user is staff
-  if (user?.is_staff) {
+  // If on user dashboard but is staff, show the entry to Admin Portal
+  if (!isAdminPath && user?.is_staff) {
     menuItems.push({ icon: ShieldAlert, label: 'Admin Portal', path: '/dashboard/admin' });
   }
 
