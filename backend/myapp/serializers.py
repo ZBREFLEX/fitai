@@ -113,13 +113,15 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             first_name=name
         )
 
-        # Create user profile
-        UserProfile.objects.create(
+        # Update user profile (signal already creates one via get_or_create)
+        UserProfile.objects.update_or_create(
             user=user,
-            phone=phone,
-            age=age,
-            gender=gender,
-            medical_conditions=medical_conditions
+            defaults={
+                'phone': phone,
+                'age': age,
+                'gender': gender,
+                'medical_conditions': medical_conditions,
+            }
         )
 
         return user

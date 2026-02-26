@@ -60,6 +60,11 @@ interface CustomFood {
 
 export function NutritionPage() {
   const navigate = useNavigate();
+
+  const getLocalDateString = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
   const [meals, setMeals] = useState<Meal[]>([]);
   const [customFoods, setCustomFoods] = useState<CustomFood[]>([]);
   const [allFoods, setAllFoods] = useState<CustomFood[]>([]);
@@ -110,7 +115,7 @@ export function NutritionPage() {
         mealAPI.getMeals(),
         customFoodAPI.getFoods(),
         customFoodAPI.getAllFoods(),
-        summaryAPI.getDailySummary(),
+        summaryAPI.getDailySummary(getLocalDateString()),
       ]);
       setMeals(mealsRes);
       setCustomFoods(foodsRes);
@@ -213,6 +218,7 @@ export function NutritionPage() {
         fats: overrideNutrition && customNutrition.fats
           ? parseFloat(customNutrition.fats)
           : defaultFats,
+        date: getLocalDateString(),
       };
 
       const response = await mealAPI.logMeal(mealData);

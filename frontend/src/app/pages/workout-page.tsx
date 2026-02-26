@@ -276,7 +276,7 @@ export function WorkoutPage() {
       setLoading(true);
       const [workoutsRes, summaryRes, recsRes, customRes, allPresetsRes] = await Promise.all([
         workoutAPI.getWorkouts(),
-        summaryAPI.getDailySummary(),
+        summaryAPI.getDailySummary(getLocalDateString()),
         recommendationAPI.getWorkoutRecommendations(manualFocus || undefined),
         customWorkoutAPI.getAll(),
         workoutAPI.getWorkoutPresets(),

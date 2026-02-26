@@ -62,6 +62,11 @@ interface RecommendedFood {
 export function DashboardHome() {
   const { theme } = useTheme();
   const navigate = useNavigate();
+
+  const getLocalDateString = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
   const [dailySummary, setDailySummary] = useState<DailySummary | null>(null);
   const [streak, setStreak] = useState<Streak | null>(null);
   const [weeklyData, setWeeklyData] = useState<any[]>([]);
@@ -102,7 +107,7 @@ export function DashboardHome() {
 
         // Fetch today's summary, streak, and weekly stats
         const [todaysummary, streakData, weeklyRes] = await Promise.all([
-          summaryAPI.getDailySummary(),
+          summaryAPI.getDailySummary(getLocalDateString()),
           summaryAPI.getStreak(),
           summaryAPI.getWeeklyStats(),
         ]);
@@ -183,7 +188,7 @@ export function DashboardHome() {
     <div className="p-8">
       <div className="mb-8 font-poppins">
         <h1 className="text-3xl font-bold mb-2 text-foreground tracking-tight">Dashboard Overview</h1>
-        <p className="text-muted-foreground">Welcome back, {profileData?.user?.username || "Athlete"}</p>
+        <p className="text-muted-foreground">Welcome back, {profileData?.first_name || profileData?.username || "Athlete"}</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -451,7 +456,7 @@ export function DashboardHome() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <Button
                 variant="secondary"
-                className="flex flex-col h-auto py-4 gap-2 border border-transparent hover:border-primary/20"
+                className="flex flex-col h-auto py-4 gap-2 border border-transparent hover:border-primary/20 min-w-0"
                 onClick={() => navigate("/dashboard/nutrition")}
               >
                 <div className="text-xl">📊</div>
@@ -459,7 +464,7 @@ export function DashboardHome() {
               </Button>
               <Button
                 variant="secondary"
-                className="flex flex-col h-auto py-4 gap-2 border border-transparent hover:border-primary/20"
+                className="flex flex-col h-auto py-4 gap-2 border border-transparent hover:border-primary/20 min-w-0"
                 onClick={() => navigate("/dashboard/workout")}
               >
                 <div className="text-xl">💪</div>
@@ -467,7 +472,7 @@ export function DashboardHome() {
               </Button>
               <Button
                 variant="secondary"
-                className="flex flex-col h-auto py-4 gap-2 border border-transparent hover:border-primary/20"
+                className="flex flex-col h-auto py-4 gap-2 border border-transparent hover:border-primary/20 min-w-0"
                 onClick={() => navigate("/dashboard/settings")}
               >
                 <div className="text-xl">⚙️</div>

@@ -254,6 +254,7 @@ class UserProfile(models.Model):
     age = models.PositiveIntegerField(blank=True, null=True)
     gender = models.CharField(max_length=20, choices=GENDER_CHOICES, blank=True, null=True)
     medical_conditions = models.TextField(blank=True, null=True, help_text='List any medical conditions like diabetes, hypertension, etc.')
+    is_banned = models.BooleanField(default=False, help_text='Designates whether this user is banned from the application.')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

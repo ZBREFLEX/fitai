@@ -853,3 +853,26 @@ export const gamificationAPI = {
         return await response.json();
     },
 };
+
+export const chatAPI = {
+    sendMessage: async (message: string, history: Array<{ role: string, content: string }>) => {
+        const accessToken = tokenService.getAccessToken();
+        if (!accessToken) throw new Error("Not authenticated");
+
+        const response = await fetch(`${API_URL}/chat/`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${accessToken}`,
+            },
+            body: JSON.stringify({ message, history }),
+        });
+
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.error || "Failed to communicate with AI");
+        }
+
+        return await response.json();
+    },
+};

@@ -3,6 +3,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from . import views
 from . import views_body
 from . import views_admin
+from . import views_chat
 
 urlpatterns = [
     # Auth endpoints
@@ -66,4 +67,7 @@ urlpatterns = [
     path('admin/users/<int:pk>/toggle/', views_admin.admin_toggle_user, name='admin_toggle_user'),
     path('admin/foods/', views_admin.admin_add_food, name='admin_add_food'),
     path('admin/workouts/', views_admin.admin_add_workout, name='admin_add_workout'),
+    
+    # AI Chatbot
+    path('chat/', views_chat.chat_with_ai, name='chat'),
 ]

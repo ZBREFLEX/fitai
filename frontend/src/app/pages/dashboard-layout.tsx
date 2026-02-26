@@ -4,6 +4,7 @@ import { Button } from '../components/ui/button';
 import { useTheme } from '../contexts/theme-context';
 import { useState, useEffect } from 'react';
 import { authAPI, tokenService } from '../../services/api';
+import { ChatBot } from '../components/ChatBot';
 
 export function DashboardLayout() {
   const navigate = useNavigate();
@@ -170,6 +171,9 @@ export function DashboardLayout() {
       <main className="flex-1 overflow-auto pt-16 md:pt-0">
         <Outlet />
       </main>
+
+      {/* Global Chatbot for non-admin pages */}
+      {!isAdminPath && <ChatBot />}
     </div>
   );
 }
