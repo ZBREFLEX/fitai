@@ -36,6 +36,7 @@ interface RecommendedFood {
   ingredients: string;
   ingredients_list: string[];
   food_type: string;
+  ml_confidence?: number;
 }
 
 interface RecommendationData {
@@ -526,8 +527,15 @@ export function RecommendationsPage() {
                             <Card key={food.id} className="bg-secondary/30 border-border hover:border-primary transition-colors">
                               <CardContent className="pt-6 space-y-3">
                                 <div>
-                                  <h4 className="font-semibold text-sm">{food.food_name}</h4>
-                                  <p className="text-xs text-muted-foreground mt-1">
+                                  <div className="flex items-center justify-between">
+                                    <h4 className="font-semibold text-sm leading-tight text-foreground/90">{food.food_name}</h4>
+                                    {food.ml_confidence !== undefined && (
+                                      <span className="text-[10px] font-black italic bg-primary/15 text-primary tracking-widest uppercase px-2 py-0.5 rounded-full shadow-sm ml-2">
+                                        {food.ml_confidence}% Match
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-xs text-muted-foreground mt-1 font-medium">
                                     Per {food.serving_size}
                                   </p>
                                 </div>

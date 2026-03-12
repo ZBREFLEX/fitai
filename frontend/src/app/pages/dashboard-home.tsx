@@ -57,6 +57,7 @@ interface RecommendedFood {
   serving_size: string;
   ingredients: string;
   food_type: string;
+  ml_confidence?: number;
 }
 
 export function DashboardHome() {
@@ -322,10 +323,17 @@ export function DashboardHome() {
                 {recommendedWorkouts.map((workout, idx) => (
                   <div
                     key={idx}
-                    className="p-4 rounded-xl bg-primary/5 border border-primary/10 hover:border-primary/30 transition-all cursor-pointer group"
+                    className="p-4 rounded-xl bg-primary/5 border border-primary/10 hover:border-primary/30 transition-all cursor-pointer group relative overflow-hidden"
                     onClick={() => navigate('/dashboard/workout')}
                   >
-                    <div className="font-bold text-sm mb-1 group-hover:text-primary transition-colors">{workout.name}</div>
+                    <div className="absolute top-0 right-0 p-2">
+                      {workout.ml_confidence !== undefined && (
+                        <span className="text-[9px] font-black italic bg-primary/20 text-primary uppercase px-1.5 py-0.5 rounded shadow-sm">
+                          {workout.ml_confidence}%
+                        </span>
+                      )}
+                    </div>
+                    <div className="font-bold text-sm mb-1 group-hover:text-primary transition-colors pr-8">{workout.name}</div>
                     <div className="flex items-center gap-2 text-[10px] text-muted-foreground font-bold uppercase">
                       <span>⏱️ {workout.duration_minutes}m</span>
                       <span>💪 {workout.intensity}</span>
@@ -405,11 +413,18 @@ export function DashboardHome() {
             {recommendedFoods.map((food) => (
               <div
                 key={food.id}
-                className="p-4 rounded-xl bg-secondary/10 hover:bg-secondary/20 transition-all cursor-pointer border border-transparent hover:border-border group"
+                className="p-4 rounded-xl bg-secondary/10 hover:bg-secondary/20 transition-all cursor-pointer border border-transparent hover:border-border group relative overflow-hidden"
                 onClick={() => navigate("/dashboard/nutrition")}
               >
-                <div className="font-bold text-sm mb-1 group-hover:text-primary transition-colors">{food.food_name}</div>
-                <div className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded inline-block mb-2">
+                <div className="absolute top-0 right-0 p-2">
+                  {food.ml_confidence !== undefined && (
+                    <span className="text-[9px] font-black italic bg-primary/20 text-primary uppercase px-1.5 py-0.5 rounded shadow-sm">
+                      {food.ml_confidence}%
+                    </span>
+                  )}
+                </div>
+                <div className="font-bold text-sm mb-1 pr-8 leading-tight group-hover:text-primary transition-colors">{food.food_name}</div>
+                <div className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded inline-block mb-2 mt-1">
                   {food.calories} kcal
                 </div>
               </div>

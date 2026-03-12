@@ -701,13 +701,14 @@ def allergy_detail(request, pk):
 @authentication_classes([JWTAuthentication])
 @permission_classes([IsAuthenticated])
 def meal_recommendations(request):
-    """Get meal recommendations based on user's allergies, medical conditions, and nutrition gaps."""
-    limit = request.query_params.get('limit', None)
-    if limit:
-        try:
-            limit = int(limit)
-        except ValueError:
-            limit = None
+    """Get meal recommendations based on user's allergies, medical conditions, and nutrition gaps using ML Content-Based Filtering."""
+    from .ml_recommender import get_meal_recommendations_ml
+    
+    limit = request.query_params.get('limit', 10) # default to 10 for ML
+    try:
+        limit = int(limit)
+    except ValueError:
+        limit = 10
     
     # Get user profiles and summaries
     profile = request.user.profile
@@ -786,7 +787,7 @@ def meal_recommendations(request):
             if food.fats > 20: continue
 
         # --- High-Tech Future-Proof Logic ---
-        food_score = 0
+        food.algo_score = 10 # Base positive score
         
         # 4. Global Medical Tag Logic (Positive/Negative)
         suitable_tags = [t.strip().lower() for t in (food.suitable_for or "").split(',') if t.strip()]
@@ -795,52 +796,59 @@ def meal_recommendations(request):
         for cond in conditions:
             # Direct tag matching
             if any(cond in t or t in cond for t in suitable_tags):
-                food_score += 60 # Priority boost for admin-curated medical matching
+                food.algo_score += 60 # Priority boost for admin-curated medical matching
             if any(cond in t or t in cond for t in avoid_tags):
-                food_score -= 500 # Strict safety penalty
+                food.algo_score -= 500 # Strict safety penalty
             
             # Specific logic for common conditions
-            if is_diabetic and 'diabetes' in suitable_tags: food_score += 20
-            if has_hypertension and 'hypertension' in suitable_tags: food_score += 20
-            if has_pcos and 'pcos' in suitable_tags: food_score += 20
+            if is_diabetic and 'diabetes' in suitable_tags: food.algo_score += 20
+            if has_hypertension and 'hypertension' in suitable_tags: food.algo_score += 20
+            if has_pcos and 'pcos' in suitable_tags: food.algo_score += 20
         
         # 5. Variety Filter (Anti-Boredom)
         recent_meals = MealEntry.objects.filter(user=request.user).order_by('-date')[:15]
         recent_food_names = [m.food_name for m in recent_meals]
         if food.food_name in recent_food_names:
-            food_score -= 15 # Frequency penalty
+            food.algo_score -= 15 # Frequency penalty
             
         # 6. New Item Discovery Boost
         lifetime_count = MealEntry.objects.filter(user=request.user, food_name=food.food_name).count()
         if lifetime_count == 0:
-            food_score += 20 # Exploration boost
+            food.algo_score += 20 # Exploration boost
             
-        # Attach score for sorting
-        food.algo_score = food_score
-        safe_foods.append(food)
+        if food.algo_score > -300: # Exclude absolutely unsafe foods
+            safe_foods.append(food)
 
-    # 4. Dynamic Ranking (Combined AI Score + Nutrition Gap)
-    def calculate_final_score(food):
-        score = food.algo_score
-        # Boost based on nutrition gaps
-        if nutrition_gap['protein'] > 20:
-            score += (food.protein * 2)
-        if nutrition_gap['calories'] > 500:
-            score += (food.calories / 10)
-        return score
-
-    safe_foods.sort(key=calculate_final_score, reverse=True)
+    # --- NEW: Machine Learning Content-Based Filtering ---
+    # Represent the user's ideal structural gap as a vector mapping
+    user_ideal_vector = {
+        'calories': nutrition_gap['calories'],
+        'protein': nutrition_gap['protein'],
+        'carbs': nutrition_gap['carbs'],
+        'fats': nutrition_gap['fats']
+    }
+    
+    # Use ML to rank the safe foods based on Cosine Similarity to the ideal vector
+    ml_recommendations = get_meal_recommendations_ml(
+        user_vector=user_ideal_vector, 
+        foods_list=safe_foods, 
+        top_n=limit
+    )
 
     total_safe_foods = len(safe_foods)
-    if limit:
-        safe_foods = safe_foods[:limit]
     
-    serializer = PresetFoodSerializer(safe_foods, many=True)
+    serializer = PresetFoodSerializer(ml_recommendations, many=True)
+    # Inject the ML score into the serialized data for transparency
+    serialized_data = serializer.data
+    for i, item in enumerate(serialized_data):
+        if i < len(ml_recommendations) and hasattr(ml_recommendations[i], 'ml_score'):
+            item['ml_confidence'] = round(ml_recommendations[i].ml_score * 100, 2)
+
     return Response({
         'total_available': PresetFood.objects.count(),
         'safe_foods': total_safe_foods,
         'skipped_count': PresetFood.objects.count() - total_safe_foods,
-        'recommendations': serializer.data,
+        'recommendations': serialized_data,
         'your_allergies': list(allergies),
         'dietary_flags': {
             'vegan': is_vegan_user,
@@ -867,7 +875,9 @@ def meal_recommendations(request):
 @authentication_classes([JWTAuthentication])
 @permission_classes([IsAuthenticated])
 def workout_recommendations(request):
-    """Personalized workout recommendations based on goal, health, and activity level."""
+    """Personalized workout recommendations based on goal, health, and activity level using ML Content-Based Filtering."""
+    from .ml_recommender import get_workout_recommendations_ml
+    
     profile = request.user.profile
     goal = getattr(request.user, 'goal', None)
     latest_m = BodyMeasurement.objects.filter(user=request.user).order_by('-date_recorded').first()
@@ -1011,7 +1021,30 @@ def workout_recommendations(request):
         if lifetime_count == 0:
             score += 20 # Exploration boost
             
-        recommendations.append({
+        # Store initial heuristic adjustments as base_score
+        item['base_score'] = score
+        
+        recommendations.append(item)
+    
+    # --- NEW: Machine Learning Content-Based Filtering ---
+    # Define user's target workout vector
+    user_target_profile = {
+        'focus_part': focus_part,
+        'target_intensity': 'intense' if activity_level in ['active', 'very_active'] else ('light' if is_low_impact_needed else 'moderate')
+    }
+    
+    # Process recommendations through ML recommender
+    ml_recommendations = get_workout_recommendations_ml(
+        user_profile=user_target_profile,
+        workouts_list=recommendations,
+        top_n=10
+    )
+    
+    # Format the ML-sorted data for the response
+    formatted_recommendations = []
+    for item in ml_recommendations:
+        w = item['obj']
+        formatted_recommendations.append({
             'id': w.id,
             'name': w.name,
             'workout_type': w.workout_type,
@@ -1019,17 +1052,15 @@ def workout_recommendations(request):
             'intensity': w.intensity,
             'description': getattr(w, 'description', '') or getattr(w, 'benefits', '') or getattr(w, 'notes', ''),
             'body_part': w.body_part,
-            'score': score,
+            'score': round(item.get('score', 0), 2), # Now driven by ML similarity
+            'ml_confidence': round(item.get('ml_score', 0) * 100, 2), # Inject raw confidence percentage
             'is_custom': item['type'] == 'custom',
             'estimated_calories': w.calculate_calories() if item['type'] == 'custom' else None
         })
     
-    # Sort by score
-    recommendations.sort(key=lambda x: x['score'], reverse=True)
-    
     return Response({
         'focus_of_the_day': focus_part,
-        'recommendations': recommendations[:10],
+        'recommendations': formatted_recommendations,
         'user_activity_level': activity_level,
         'low_impact_mode': is_low_impact_needed,
         'is_rest_day': is_rest_day,

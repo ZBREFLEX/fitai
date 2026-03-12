@@ -792,9 +792,14 @@ export function WorkoutPage() {
                     )}
                     <div className={`flex-1 ${isPlanMode ? 'pl-20 pr-4 py-4' : ''}`}>
                       <div className="absolute top-0 right-0 p-3">
-                        <span className="text-[9px] font-black text-primary bg-primary/10 px-2 py-0.5 rounded-full uppercase tracking-tighter">
+                        <span className="text-[9px] font-black text-primary bg-primary/10 px-2 py-0.5 rounded-full uppercase tracking-tighter shadow-sm mr-1">
                           {rec.body_part}
                         </span>
+                        {rec.ml_confidence !== undefined && (
+                          <span className="text-[9px] font-black italic text-primary bg-primary/15 px-2 py-0.5 rounded-full uppercase tracking-widest shadow-sm">
+                            {rec.ml_confidence}%
+                          </span>
+                        )}
                       </div>
                       <CardHeader className="pb-2">
                         <CardTitle className="text-md font-bold group-hover:text-primary transition-colors leading-tight">
