@@ -92,6 +92,10 @@ export function SettingsPage() {
             setError("");
             setSuccess("");
 
+            if (!profileData.gender) {
+                throw new Error("Please select a gender.");
+            }
+
             await settingsAPI.updateProfile({
                 first_name: profileData.first_name,
                 phone: profileData.phone,
@@ -264,6 +268,7 @@ export function SettingsPage() {
                                         onChange={(e) => setProfileData({ ...profileData, gender: e.target.value })}
                                         className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm"
                                     >
+                                        <option value="" disabled>Select Gender</option>
                                         <option value="male">Male</option>
                                         <option value="female">Female</option>
                                         <option value="other">Other</option>

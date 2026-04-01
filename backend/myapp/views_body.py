@@ -974,13 +974,17 @@ def workout_recommendations(request):
         if w.name in completed_today:
             continue
             
+        # HARD FILTER: User requested ONLY the target body part's exercises to be present in the list
+        if not is_rest_day and str(w.body_part).lower() != str(focus_part).lower():
+            continue
+            
         score = 0
         # If it's a custom workout, give it a tiny boost because user created it
         if item['type'] == 'custom':
             score += 5
             
         # 0. Body Part Focus (Intelligent Rotation)
-        if w.body_part == focus_part:
+        if str(w.body_part).lower() == str(focus_part).lower():
             score += 50 # Extreme priority for the split focus
             
         # 1. Safety Filter
