@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useLocation } from "react-router";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -60,6 +60,7 @@ interface CustomFood {
 
 export function NutritionPage() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const getLocalDateString = () => {
     const d = new Date();
@@ -128,6 +129,18 @@ export function NutritionPage() {
       setLoading(false);
     }
   };
+
+  // Handle pre-selected food from recommendations routing
+  useEffect(() => {
+    if (allFoods.length > 0 && location.state?.selectedFood) {
+      const selected = location.state.selectedFood;
+      setSelectedFoodId(selected.id.toString());
+      setFoodSearchQuery(selected.food_name);
+      
+      // Clear history state to avoid loops on refresh
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [allFoods, location.state, navigate, location.pathname]);
 
   const createCustomFood = async () => {
     if (
