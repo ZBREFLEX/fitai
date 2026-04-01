@@ -16,6 +16,21 @@ from pathlib import Path
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# --- EXPERIMENTAL .ENV LOADER ---
+# Bypassing missing python-dotenv by manually reading the .env file
+try:
+    with open(BASE_DIR / '.env', 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            if '=' in line:
+                k, v = line.split('=', 1)
+                os.environ[k.strip()] = v.strip().strip('"').strip("'")
+except Exception:
+    pass
+# --------------------------------
+
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
